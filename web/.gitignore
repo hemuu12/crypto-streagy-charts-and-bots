@@ -39,6 +39,7 @@ yarn-error.log*
 # runtime state
 /positions.json
 /bot.log
+/backtest-history.json
 
 # typescript
 *.tsbuildinfo

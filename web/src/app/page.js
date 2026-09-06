@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Chart from "./components/Chart.jsx";
 
 const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT"];
@@ -20,10 +20,15 @@ export default function Home() {
   const [candles, setCandles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [focusDate, setFocusDate] = useState(null);
+  const [focusedTradeKey, setFocusedTradeKey] = useState(null);
 
   const [positions, setPositions] = useState([]);
   const [backtest, setBacktest] = useState(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
+  const [backtestStart, setBacktestStart] = useState("2022-01-01");
+  const [backtestEnd, setBacktestEnd] = useState("2024-12-31");
+  const [backtestHistory, setBacktestHistory] = useState([]);
   const [logLines, setLogLines] = useState([]);
   const [toast, setToast] = useState(null);
 
@@ -31,7 +36,10 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/chart-data?pair=${encodeURIComponent(pair)}&timeframe=${timeframe}&limit=${candleLimit}`);
+      const url = focusDate
+        ? `/api/chart-data?pair=${encodeURIComponent(pair)}&timeframe=${timeframe}&limit=${candleLimit}&around=${encodeURIComponent(focusDate)}`
+        : `/api/chart-data?pair=${encodeURIComponent(pair)}&timeframe=${timeframe}&limit=${candleLimit}`;
+      const res = await fetch(url);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setCandles(data.candles);
@@ -40,7 +48,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, timeframe, candleLimit]);
+  }, [pair, timeframe, candleLimit, focusDate]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch("/api/positions");
@@ -54,6 +62,12 @@ export default function Home() {
     setLogLines(data.lines || []);
   }, []);
 
+  const loadBacktestHistory = useCallback(async () => {
+    const res = await fetch("/api/backtest-history");
+    const data = await res.json();
+    setBacktestHistory(data.runs || []);
+  }, []);
+
   useEffect(() => {
     loadChart();
   }, [loadChart]);
@@ -61,7 +75,8 @@ export default function Home() {
   useEffect(() => {
     loadPositions();
     loadLog();
-  }, [loadPositions, loadLog]);
+    loadBacktestHistory();
+  }, [loadPositions, loadLog, loadBacktestHistory]);
 
   async function runBotOnce() {
     setToast("Running bot cycle...");
@@ -81,13 +96,29 @@ export default function Home() {
     }
   }
 
+  const chartSectionRef = useRef(null);
+
+  function viewTradeOnChart(trade, key) {
+    setFocusedTradeKey(key);
+    setFocusDate(trade.date);
+    chartSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function backToLive() {
+    setFocusedTradeKey(null);
+    setFocusDate(null);
+  }
+
   async function runBacktest() {
     setBacktestLoading(true);
     try {
-      const res = await fetch(`/api/backtest?pair=${encodeURIComponent(pair)}`);
+      const res = await fetch(
+        `/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}`
+      );
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setBacktest(data);
+      loadBacktestHistory();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -175,6 +206,29 @@ export default function Home() {
         >
           Run Bot Once
         </button>
+        <hr className="border-[#2a2d3e]" />
+
+        <label className="block text-sm">
+          Backtest From
+          <input
+            type="date"
+            value={backtestStart}
+            onChange={(e) => setBacktestStart(e.target.value)}
+            max={backtestEnd}
+            className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
+          />
+        </label>
+        <label className="block text-sm">
+          Backtest To
+          <input
+            type="date"
+            value={backtestEnd}
+            onChange={(e) => setBacktestEnd(e.target.value)}
+            min={backtestStart}
+            className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
+          />
+        </label>
+
         <button
           onClick={runBacktest}
           disabled={backtestLoading}
@@ -214,6 +268,29 @@ export default function Home() {
             <Metric label="24h Low" value={`$${last.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} valueColor="text-red-400/90" />
           </div>
         )}
+
+        <div ref={chartSectionRef} className="flex items-center justify-between">
+          <h2 className="font-semibold">
+            {focusDate ? (
+              <>
+                Viewing trade context ·{" "}
+                <span className="text-zinc-400 font-normal">
+                  {new Date(focusDate).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                </span>
+              </>
+            ) : (
+              "Live Chart"
+            )}
+          </h2>
+          {focusDate && (
+            <button
+              onClick={backToLive}
+              className="text-xs bg-blue-600 hover:bg-blue-700 rounded px-3 py-1.5 font-medium"
+            >
+              ← Back to Live
+            </button>
+          )}
+        </div>
 
         <div className="relative">
           {candles.length > 0 && (
@@ -293,6 +370,11 @@ export default function Home() {
           <h2 className="font-semibold mb-2">Backtest Results</h2>
           {backtest && (
             <div className="space-y-2">
+              <div className="text-xs text-zinc-400">
+                {backtest.symbol} · {new Date(backtest.start).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                {" → "}
+                {new Date(backtest.end).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+              </div>
               <div className="grid grid-cols-6 gap-2">
                 <Metric label="Initial" value={`$${backtest.initialCapital.toLocaleString()}`} />
                 <Metric label="Final" value={`$${backtest.finalCapital.toLocaleString()}`} />
@@ -306,38 +388,62 @@ export default function Home() {
                   <thead>
                     <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
                       <th className="py-2 pr-4 font-medium">Date</th>
-                      <th className="py-2 pr-4 font-medium text-right">Exit Price</th>
+                      <th className="py-2 pr-4 font-medium">Type</th>
+                      <th className="py-2 pr-4 font-medium text-right">Price</th>
                       <th className="py-2 pr-4 font-medium text-right">Qty</th>
+                      <th className="py-2 pr-4 font-medium text-right">EMA Fast</th>
+                      <th className="py-2 pr-4 font-medium text-right">EMA Slow</th>
                       <th className="py-2 pr-4 font-medium text-right">PnL</th>
                       <th className="py-2 pr-4 font-medium">Reason</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {backtest.trades.filter((t) => t.type === "SELL").map((t, i) => {
-                      const isWin = t.pnl > 0;
+                    {backtest.trades.map((t, i) => {
+                      const isBuy = t.type === "BUY";
+                      const isWin = (t.pnl || 0) > 0;
                       const reasonStyles = {
+                        golden_cross: "bg-blue-900/40 text-blue-400",
                         take_profit: "bg-green-900/40 text-green-400",
                         stop_loss: "bg-red-900/40 text-red-400",
                         death_cross: "bg-amber-900/40 text-amber-400",
                         end_of_data: "bg-zinc-700/40 text-zinc-400",
                       };
                       const reasonLabels = {
+                        golden_cross: "Golden Cross",
                         take_profit: "Take Profit",
                         stop_loss: "Stop Loss",
                         death_cross: "Death Cross",
                         end_of_data: "End of Data",
                       };
+                      const tradeKey = `${t.date}-${i}`;
+                      const isSelected = focusedTradeKey === tradeKey;
                       return (
-                        <tr key={i} className="border-b border-[#1e2130] hover:bg-[#1a1e29]">
+                        <tr
+                          key={i}
+                          onClick={() => viewTradeOnChart(t, tradeKey)}
+                          title="Click to view this trade on the chart"
+                          className={`border-b border-[#1e2130] cursor-pointer hover:bg-[#1a1e29] ${isSelected ? "bg-blue-900/20 ring-1 ring-inset ring-blue-500/40" : ""}`}
+                        >
                           <td className="py-2 pr-4 text-zinc-300 whitespace-nowrap">
                             {new Date(t.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${isBuy ? "bg-green-900/40 text-green-400" : "bg-red-900/40 text-red-400"}`}>
+                              {isBuy ? "BUY" : "SELL"}
+                            </span>
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums">
                             ${t.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.qty.toFixed(6)}</td>
-                          <td className={`py-2 pr-4 text-right tabular-nums font-medium ${isWin ? "text-green-400" : "text-red-400"}`}>
-                            {isWin ? "+" : ""}${t.pnl.toFixed(2)}
+                          <td className="py-2 pr-4 text-right tabular-nums text-amber-400/80">
+                            {t.emaFast != null ? `$${t.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums text-blue-400/80">
+                            {t.emaSlow != null ? `$${t.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
+                          </td>
+                          <td className={`py-2 pr-4 text-right tabular-nums font-medium ${isBuy ? "text-zinc-500" : isWin ? "text-green-400" : "text-red-400"}`}>
+                            {isBuy ? "—" : `${isWin ? "+" : ""}$${t.pnl.toFixed(2)}`}
                           </td>
                           <td className="py-2 pr-4">
                             <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${reasonStyles[t.reason] || "bg-zinc-700/40 text-zinc-400"}`}>
@@ -351,6 +457,49 @@ export default function Home() {
                 </table>
               </div>
             </div>
+          )}
+        </section>
+
+        <section>
+          <h2 className="font-semibold mb-2">Backtest History</h2>
+          {backtestHistory.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
+                    <th className="py-2 pr-4 font-medium">Run At</th>
+                    <th className="py-2 pr-4 font-medium">Pair</th>
+                    <th className="py-2 pr-4 font-medium">Range</th>
+                    <th className="py-2 pr-4 font-medium text-right">Return</th>
+                    <th className="py-2 pr-4 font-medium text-right">Win Rate</th>
+                    <th className="py-2 pr-4 font-medium text-right">Trades</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {backtestHistory.map((run, i) => (
+                    <tr
+                      key={i}
+                      onClick={() => setBacktest(run)}
+                      title="Click to load this run"
+                      className="border-b border-[#1e2130] cursor-pointer hover:bg-[#1a1e29]"
+                    >
+                      <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
+                        {new Date(run.runAt).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td className="py-2 pr-4 font-medium">{run.symbol}</td>
+                      <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">{run.start} → {run.end}</td>
+                      <td className={`py-2 pr-4 text-right tabular-nums font-medium ${run.returnPct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {run.returnPct >= 0 ? "+" : ""}{run.returnPct}%
+                      </td>
+                      <td className="py-2 pr-4 text-right tabular-nums">{run.winRate}%</td>
+                      <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{run.totalTrades}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-sm text-zinc-400">No backtest runs yet.</div>
           )}
         </section>
 

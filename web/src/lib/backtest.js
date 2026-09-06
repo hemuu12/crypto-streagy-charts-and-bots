@@ -1,6 +1,12 @@
 import { fetchHistorical } from "./data.js";
 import { generateSignals } from "./strategy.js";
+import { saveBacktestRun } from "./history.js";
 import { BACKTEST_START, BACKTEST_END, INITIAL_CAPITAL, STOP_LOSS_PCT, TAKE_PROFIT_PCT, RISK_PER_TRADE, PAIRS } from "./config.js";
+
+function round(value, decimals) {
+  const f = 10 ** decimals;
+  return Math.round(value * f) / f;
+}
 
 export async function runBacktest(symbol, start = BACKTEST_START, end = BACKTEST_END) {
   const raw = await fetchHistorical(symbol, start, end);
@@ -14,6 +20,8 @@ export async function runBacktest(symbol, start = BACKTEST_START, end = BACKTEST
   for (const row of candles) {
     const price = row.close;
     const date = new Date(row.time).toISOString();
+    const emaFast = round(row.emaFast, 4);
+    const emaSlow = round(row.emaSlow, 4);
 
     if (row.signal === 1 && position === 0) {
       const qty = (capital * RISK_PER_TRADE) / price;
@@ -22,7 +30,7 @@ export async function runBacktest(symbol, start = BACKTEST_START, end = BACKTEST
       const stopLoss = price * (1 - STOP_LOSS_PCT);
       const takeProfit = price * (1 + TAKE_PROFIT_PCT);
       capital -= qty * price;
-      trades.push({ type: "BUY", date, price, qty, stopLoss, takeProfit });
+      trades.push({ type: "BUY", date, price, qty, stopLoss, takeProfit, emaFast, emaSlow, reason: "golden_cross" });
     } else if (position > 0) {
       const stopLoss = entryPrice * (1 - STOP_LOSS_PCT);
       const takeProfit = entryPrice * (1 + TAKE_PROFIT_PCT);
@@ -42,7 +50,7 @@ export async function runBacktest(symbol, start = BACKTEST_START, end = BACKTEST
       if (exitReason) {
         const pnl = (exitPrice - entryPrice) * position;
         capital += position * exitPrice;
-        trades.push({ type: "SELL", date, price: exitPrice, qty: position, pnl, reason: exitReason });
+        trades.push({ type: "SELL", date, price: exitPrice, qty: position, pnl, reason: exitReason, emaFast, emaSlow });
         position = 0;
         entryPrice = 0;
       }
@@ -60,6 +68,8 @@ export async function runBacktest(symbol, start = BACKTEST_START, end = BACKTEST
       qty: position,
       pnl,
       reason: "end_of_data",
+      emaFast: round(last.emaFast, 4),
+      emaSlow: round(last.emaSlow, 4),
     });
   }
 
@@ -68,7 +78,7 @@ export async function runBacktest(symbol, start = BACKTEST_START, end = BACKTEST
   const losses = sellTrades.filter((t) => (t.pnl || 0) <= 0);
   const totalPnl = sellTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
 
-  return {
+  const result = {
     symbol,
     start,
     end,
@@ -82,6 +92,9 @@ export async function runBacktest(symbol, start = BACKTEST_START, end = BACKTEST
     winRate: sellTrades.length ? Math.round((wins.length / sellTrades.length) * 100 * 100) / 100 : 0,
     trades,
   };
+
+  await saveBacktestRun(result);
+  return result;
 }
 
 export async function runAllPairs() {

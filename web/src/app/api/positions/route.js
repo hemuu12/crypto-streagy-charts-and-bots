@@ -3,7 +3,7 @@ import { loadPositions } from "@/lib/bot.js";
 import { getTickerPrice } from "@/lib/data.js";
 
 export async function GET() {
-  const positions = loadPositions();
+  const positions = await loadPositions();
   const rows = [];
 
   for (const [symbol, pos] of Object.entries(positions)) {
