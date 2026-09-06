@@ -1,20 +1,35 @@
 import ccxt from "ccxt";
 import * as config from "./config.js";
 
+// Optional: set BINANCE_PROXY_URL to a Cloudflare Worker (or similar) that
+// forwards requests to api.binance.com, to bypass geo-blocking on cloud hosts.
+const PROXY_BASE = process.env.BINANCE_PROXY_URL; // e.g. https://your-worker.workers.dev
+
+function applyProxy(exchange) {
+  if (!PROXY_BASE) return exchange;
+  exchange.urls["api"]["public"] = `${PROXY_BASE}/api/v3`;
+  exchange.urls["api"]["private"] = `${PROXY_BASE}/api/v3`;
+  return exchange;
+}
+
 export function getPublicExchange() {
-  return new ccxt.bybit({
-    enableRateLimit: true,
-    options: { defaultType: "spot" },
-  });
+  return applyProxy(
+    new ccxt.binance({
+      enableRateLimit: true,
+      options: { defaultType: "spot" },
+    })
+  );
 }
 
 export function getPrivateExchange() {
-  return new ccxt.bybit({
-    apiKey: config.API_KEY,
-    secret: config.API_SECRET,
-    enableRateLimit: true,
-    options: { defaultType: "spot" },
-  });
+  return applyProxy(
+    new ccxt.binance({
+      apiKey: config.API_KEY,
+      secret: config.API_SECRET,
+      enableRateLimit: true,
+      options: { defaultType: "spot" },
+    })
+  );
 }
 
 function toCandles(raw) {
