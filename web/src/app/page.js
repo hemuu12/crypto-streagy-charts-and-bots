@@ -14,8 +14,8 @@ export default function Home() {
   const [showEmaFast, setShowEmaFast] = useState(true);
   const [showEmaSlow, setShowEmaSlow] = useState(true);
   const [showSignals, setShowSignals] = useState(true);
-  const [showVolume, setShowVolume] = useState(true);
-  const [paperMode, setPaperMode] = useState(true);
+  const [showVolume, setShowVolume] = useState(false);
+  const [paperMode, setPaperMode] = useState(false);
 
   const [candles, setCandles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -191,13 +191,27 @@ export default function Home() {
         {error && <div className="bg-red-900/50 border border-red-700 rounded px-3 py-2 text-sm">{error}</div>}
 
         {last && (
-          <div className="grid grid-cols-6 gap-2">
-            <Metric label="Price" value={`$${last.close.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} delta={`${priceChangePct >= 0 ? "+" : ""}${priceChangePct.toFixed(2)}%`} />
-            <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} />
-            <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} />
-            <Metric label="Trend" value={last.emaFast > last.emaSlow ? "🟢 BULLISH" : "🔴 BEARISH"} />
-            <Metric label="High" value={`$${last.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
-            <Metric label="Low" value={`$${last.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <Metric
+              label="Price"
+              value={`$${last.close.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+              delta={`${priceChangePct >= 0 ? "+" : ""}${priceChangePct.toFixed(2)}%`}
+              deltaPositive={priceChangePct >= 0}
+              accent
+            />
+            <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
+            <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
+            <Metric
+              label="Trend"
+              value={
+                <span className={`inline-flex items-center gap-1.5 ${last.emaFast > last.emaSlow ? "text-green-400" : "text-red-400"}`}>
+                  <span className={`h-2 w-2 rounded-full ${last.emaFast > last.emaSlow ? "bg-green-400" : "bg-red-400"}`} />
+                  {last.emaFast > last.emaSlow ? "Bullish" : "Bearish"}
+                </span>
+              }
+            />
+            <Metric label="24h High" value={`$${last.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} valueColor="text-green-400/90" />
+            <Metric label="24h Low" value={`$${last.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} valueColor="text-red-400/90" />
           </div>
         )}
 
@@ -233,34 +247,43 @@ export default function Home() {
         <section>
           <h2 className="font-semibold mb-2">Open Positions</h2>
           {positions.length > 0 ? (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
-                  <th className="py-1 pr-4">Pair</th>
-                  <th className="py-1 pr-4">Entry $</th>
-                  <th className="py-1 pr-4">Current $</th>
-                  <th className="py-1 pr-4">Qty</th>
-                  <th className="py-1 pr-4">SL $</th>
-                  <th className="py-1 pr-4">TP $</th>
-                  <th className="py-1 pr-4">PnL %</th>
-                  <th className="py-1 pr-4">Opened</th>
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map((p) => (
-                  <tr key={p.symbol} className="border-b border-[#1e2130]">
-                    <td className="py-1 pr-4">{p.symbol}</td>
-                    <td className="py-1 pr-4">{p.entry}</td>
-                    <td className="py-1 pr-4">{p.current}</td>
-                    <td className="py-1 pr-4">{p.qty}</td>
-                    <td className="py-1 pr-4">{p.stopLoss}</td>
-                    <td className="py-1 pr-4">{p.takeProfit}</td>
-                    <td className="py-1 pr-4">{p.pnlPct}%</td>
-                    <td className="py-1 pr-4">{p.time}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
+                    <th className="py-2 pr-4 font-medium">Pair</th>
+                    <th className="py-2 pr-4 font-medium text-right">Entry</th>
+                    <th className="py-2 pr-4 font-medium text-right">Current</th>
+                    <th className="py-2 pr-4 font-medium text-right">Qty</th>
+                    <th className="py-2 pr-4 font-medium text-right">Stop Loss</th>
+                    <th className="py-2 pr-4 font-medium text-right">Take Profit</th>
+                    <th className="py-2 pr-4 font-medium text-right">PnL</th>
+                    <th className="py-2 pr-4 font-medium">Opened</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {positions.map((p) => {
+                    const isWin = p.pnlPct > 0;
+                    return (
+                      <tr key={p.symbol} className="border-b border-[#1e2130] hover:bg-[#1a1e29]">
+                        <td className="py-2 pr-4 font-medium">{p.symbol}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums">${p.entry.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums">${p.current.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{p.qty}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-red-400/80">${p.stopLoss.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-green-400/80">${p.takeProfit.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        <td className={`py-2 pr-4 text-right tabular-nums font-medium ${isWin ? "text-green-400" : "text-red-400"}`}>
+                          {isWin ? "+" : ""}{p.pnlPct}%
+                        </td>
+                        <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
+                          {new Date(p.time).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div className="text-sm text-zinc-400">No open positions.</div>
           )}
@@ -278,28 +301,55 @@ export default function Home() {
                 <Metric label="Total Trades" value={backtest.totalTrades} />
                 <Metric label="W / L" value={`${backtest.wins} / ${backtest.losses}`} />
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
-                    <th className="py-1 pr-4">Date</th>
-                    <th className="py-1 pr-4">Price</th>
-                    <th className="py-1 pr-4">Qty</th>
-                    <th className="py-1 pr-4">PnL</th>
-                    <th className="py-1 pr-4">Reason</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {backtest.trades.filter((t) => t.type === "SELL").map((t, i) => (
-                    <tr key={i} className="border-b border-[#1e2130]">
-                      <td className="py-1 pr-4">{t.date}</td>
-                      <td className="py-1 pr-4">{t.price.toFixed(2)}</td>
-                      <td className="py-1 pr-4">{t.qty.toFixed(6)}</td>
-                      <td className="py-1 pr-4">{t.pnl.toFixed(2)}</td>
-                      <td className="py-1 pr-4">{t.reason}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
+                      <th className="py-2 pr-4 font-medium">Date</th>
+                      <th className="py-2 pr-4 font-medium text-right">Exit Price</th>
+                      <th className="py-2 pr-4 font-medium text-right">Qty</th>
+                      <th className="py-2 pr-4 font-medium text-right">PnL</th>
+                      <th className="py-2 pr-4 font-medium">Reason</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {backtest.trades.filter((t) => t.type === "SELL").map((t, i) => {
+                      const isWin = t.pnl > 0;
+                      const reasonStyles = {
+                        take_profit: "bg-green-900/40 text-green-400",
+                        stop_loss: "bg-red-900/40 text-red-400",
+                        death_cross: "bg-amber-900/40 text-amber-400",
+                        end_of_data: "bg-zinc-700/40 text-zinc-400",
+                      };
+                      const reasonLabels = {
+                        take_profit: "Take Profit",
+                        stop_loss: "Stop Loss",
+                        death_cross: "Death Cross",
+                        end_of_data: "End of Data",
+                      };
+                      return (
+                        <tr key={i} className="border-b border-[#1e2130] hover:bg-[#1a1e29]">
+                          <td className="py-2 pr-4 text-zinc-300 whitespace-nowrap">
+                            {new Date(t.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums">
+                            ${t.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.qty.toFixed(6)}</td>
+                          <td className={`py-2 pr-4 text-right tabular-nums font-medium ${isWin ? "text-green-400" : "text-red-400"}`}>
+                            {isWin ? "+" : ""}${t.pnl.toFixed(2)}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${reasonStyles[t.reason] || "bg-zinc-700/40 text-zinc-400"}`}>
+                              {reasonLabels[t.reason] || t.reason}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </section>
@@ -307,26 +357,117 @@ export default function Home() {
         <section>
           <h2 className="font-semibold mb-2">Bot Log</h2>
           {logLines.length > 0 ? (
-            <pre className="bg-[#1e222d] border border-[#2a2d3e] rounded p-3 text-xs overflow-x-auto whitespace-pre-wrap">
-              {logLines.join("\n")}
-            </pre>
+            <div className="bg-[#1e222d] border border-[#2a2d3e] rounded overflow-hidden">
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="w-full text-xs border-collapse">
+                  <tbody>
+                    {[...logLines].reverse().map((line, i) => (
+                      <LogRow key={i} line={line} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           ) : (
             <div className="text-sm text-zinc-400">No log yet. Run the bot to see activity.</div>
           )}
         </section>
 
-        <p className="text-xs text-zinc-500">EMA 50/200 Strategy · Binance · TradingView Lightweight Charts</p>
+        <p className="text-xs text-zinc-500">EMA 50/200 Strategy · OKX · TradingView Lightweight Charts</p>
       </main>
     </div>
   );
 }
 
-function Metric({ label, value, delta }) {
+function parseLogLine(line) {
+  const match = line.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (!match) return { time: "", rest: line };
+  const [, time, rest] = match;
+
+  const cycle = rest.match(/^([A-Z]+\/[A-Z]+)\s*\|\s*trend=(\w+)\s*\|\s*signal=(-?\d)\s*\|\s*price=([\d.]+)$/);
+  if (cycle) {
+    const [, pair, trend, signal, price] = cycle;
+    return { time, type: "cycle", pair, trend, signal: Number(signal), price: Number(price) };
+  }
+
+  const trade = rest.match(/^(BOUGHT|SOLD)\s+([A-Z]+\/[A-Z]+)\s*\|(.*)$/);
+  if (trade) {
+    const [, action, pair, detail] = trade;
+    return { time, type: "trade", action, pair, detail: detail.trim() };
+  }
+
+  const error = rest.match(/^ERROR on ([A-Z]+\/[A-Z]+):\s*(.*)$/);
+  if (error) {
+    const [, pair, message] = error;
+    return { time, type: "error", pair, message };
+  }
+
+  const skip = rest.match(/^(Max positions reached, skipping|Sleeping)\s*(.*)$/);
+  if (skip) {
+    return { time, type: "info", message: rest };
+  }
+
+  return { time, type: "raw", message: rest };
+}
+
+function LogRow({ line }) {
+  const parsed = parseLogLine(line);
+
+  const trendColor = parsed.trend === "bullish" ? "text-green-400" : "text-red-400";
+  const signalLabel = { 1: "BUY", "-1": "SELL", 0: "—" }[parsed.signal] ?? "—";
+  const signalColor = parsed.signal === 1 ? "text-green-400" : parsed.signal === -1 ? "text-red-400" : "text-zinc-500";
+
   return (
-    <div className="bg-[#1e222d] border border-[#2a2d3e] rounded px-3 py-2">
-      <div className="text-xs text-zinc-400">{label}</div>
-      <div className="text-lg font-semibold">{value}</div>
-      {delta && <div className="text-xs text-zinc-400">{delta}</div>}
+    <tr className="border-b border-[#1e2130] hover:bg-[#1a1e29]">
+      <td className="py-1.5 px-3 text-zinc-500 whitespace-nowrap font-mono">{parsed.time}</td>
+      {parsed.type === "cycle" && (
+        <>
+          <td className="py-1.5 px-3 font-medium whitespace-nowrap">{parsed.pair}</td>
+          <td className={`py-1.5 px-3 whitespace-nowrap ${trendColor}`}>{parsed.trend === "bullish" ? "▲ Bullish" : "▼ Bearish"}</td>
+          <td className={`py-1.5 px-3 font-medium whitespace-nowrap ${signalColor}`}>{signalLabel}</td>
+          <td className="py-1.5 px-3 text-right tabular-nums whitespace-nowrap">${parsed.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+        </>
+      )}
+      {parsed.type === "trade" && (
+        <td className="py-1.5 px-3" colSpan={4}>
+          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium mr-2 ${parsed.action === "BOUGHT" ? "bg-green-900/40 text-green-400" : "bg-red-900/40 text-red-400"}`}>
+            {parsed.action}
+          </span>
+          <span className="font-medium">{parsed.pair}</span>
+          <span className="text-zinc-400 ml-2">{parsed.detail}</span>
+        </td>
+      )}
+      {parsed.type === "error" && (
+        <td className="py-1.5 px-3 text-red-400" colSpan={4}>
+          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium mr-2 bg-red-900/40">ERROR</span>
+          <span className="font-medium">{parsed.pair}</span>
+          <span className="ml-2">{parsed.message}</span>
+        </td>
+      )}
+      {(parsed.type === "info" || parsed.type === "raw") && (
+        <td className="py-1.5 px-3 text-zinc-400" colSpan={4}>{parsed.message}</td>
+      )}
+    </tr>
+  );
+}
+
+function Metric({ label, value, delta, deltaPositive, sub, valueColor, accent }) {
+  return (
+    <div
+      className={`bg-[#1e222d] border rounded-lg px-3 py-2.5 ${
+        accent ? "border-blue-900/50 ring-1 ring-blue-500/10" : "border-[#2a2d3e]"
+      }`}
+    >
+      <div className="text-xs text-zinc-400 uppercase tracking-wide">{label}</div>
+      <div className={`text-lg font-semibold mt-0.5 ${valueColor || "text-zinc-100"}`}>{value}</div>
+      <div className="text-xs mt-0.5 h-4">
+        {delta && (
+          <span className={`inline-flex items-center gap-0.5 font-medium ${deltaPositive ? "text-green-400" : "text-red-400"}`}>
+            {deltaPositive ? "▲" : "▼"} {delta}
+          </span>
+        )}
+        {sub && !delta && <span className="text-zinc-500">{sub}</span>}
+      </div>
     </div>
   );
 }
