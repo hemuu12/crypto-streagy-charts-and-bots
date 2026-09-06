@@ -6,18 +6,17 @@ import config
 
 def get_public_exchange():
     """No API keys needed — for market data only."""
-    return ccxt.binance({
+    return ccxt.bybit({
         "enableRateLimit": True,
         "options": {
             "defaultType": "spot",
-            "fetchCurrencies": False,
         },
     })
 
 
 def get_private_exchange():
     """API keys required — for orders and balance."""
-    return ccxt.binance({
+    return ccxt.bybit({
         "apiKey": config.API_KEY,
         "secret": config.API_SECRET,
         "enableRateLimit": True,
