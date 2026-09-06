@@ -1,5 +1,6 @@
 export const API_KEY = process.env.BINANCE_API_KEY || "";
 export const API_SECRET = process.env.BINANCE_API_SECRET || "";
+export const API_PASSWORD = process.env.OKX_API_PASSWORD || "";
 
 export const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT"];
 
