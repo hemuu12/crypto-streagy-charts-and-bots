@@ -6,15 +6,21 @@ import Chart from "./components/Chart.jsx";
 const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT"];
 const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
+
 export default function Home() {
+  const [strategy, setStrategy] = useState("ema");
   const [pair, setPair] = useState("BTC/USDT");
   const [timeframe, setTimeframe] = useState("4h");
   const [candleLimit, setCandleLimit] = useState(250);
+
+  const isRsi = strategy === "rsi";
 
   const [showEmaFast, setShowEmaFast] = useState(true);
   const [showEmaSlow, setShowEmaSlow] = useState(true);
   const [showSignals, setShowSignals] = useState(true);
   const [showVolume, setShowVolume] = useState(false);
+  const [showRsi, setShowRsi] = useState(true);
+  const [showChande, setShowChande] = useState(true);
   const [paperMode, setPaperMode] = useState(false);
 
   const [candles, setCandles] = useState([]);
@@ -36,9 +42,10 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const url = focusDate
-        ? `/api/chart-data?pair=${encodeURIComponent(pair)}&timeframe=${timeframe}&limit=${candleLimit}&around=${encodeURIComponent(focusDate)}`
+      let url = isRsi
+        ? `/api/rsi-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}`
         : `/api/chart-data?pair=${encodeURIComponent(pair)}&timeframe=${timeframe}&limit=${candleLimit}`;
+      if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -48,7 +55,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, timeframe, candleLimit, focusDate]);
+  }, [pair, timeframe, candleLimit, focusDate, isRsi]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch("/api/positions");
@@ -113,7 +120,7 @@ export default function Home() {
     setBacktestLoading(true);
     try {
       const res = await fetch(
-        `/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}`
+        `/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}&strategy=${strategy}`
       );
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -136,6 +143,28 @@ export default function Home() {
         <h2 className="font-semibold text-sm uppercase tracking-wide text-zinc-400">Controls</h2>
 
         <label className="block text-sm">
+          Strategy
+          <select
+            className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
+            value={strategy}
+            onChange={(e) => {
+              setStrategy(e.target.value);
+              setFocusDate(null);
+              setFocusedTradeKey(null);
+            }}
+          >
+            <option value="ema">EMA 50/200 Cross</option>
+            <option value="rsi">RSI + ChandeMO (Long only)</option>
+          </select>
+        </label>
+
+        {isRsi && (
+          <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
+            RSI 14 on 4H · ChandeMO 4 on 1H · long only. Timeframe and EMA controls are fixed for this strategy.
+          </div>
+        )}
+
+        <label className="block text-sm">
           Pair
           <select
             className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
@@ -148,11 +177,12 @@ export default function Home() {
           </select>
         </label>
 
-        <label className="block text-sm">
+        <label className={`block text-sm ${isRsi ? "opacity-40" : ""}`}>
           Timeframe
           <select
-            className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
-            value={timeframe}
+            className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1 disabled:cursor-not-allowed"
+            value={isRsi ? "1h" : timeframe}
+            disabled={isRsi}
             onChange={(e) => setTimeframe(e.target.value)}
           >
             {TIMEFRAMES.map((tf) => (
@@ -176,12 +206,12 @@ export default function Home() {
 
         <hr className="border-[#2a2d3e]" />
 
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showEmaFast} onChange={(e) => setShowEmaFast(e.target.checked)} />
+        <label className={`flex items-center gap-2 text-sm ${isRsi ? "opacity-40" : ""}`}>
+          <input type="checkbox" checked={!isRsi && showEmaFast} disabled={isRsi} onChange={(e) => setShowEmaFast(e.target.checked)} />
           EMA Fast
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showEmaSlow} onChange={(e) => setShowEmaSlow(e.target.checked)} />
+        <label className={`flex items-center gap-2 text-sm ${isRsi ? "opacity-40" : ""}`}>
+          <input type="checkbox" checked={!isRsi && showEmaSlow} disabled={isRsi} onChange={(e) => setShowEmaSlow(e.target.checked)} />
           EMA Slow
         </label>
         <label className="flex items-center gap-2 text-sm">
@@ -192,6 +222,18 @@ export default function Home() {
           <input type="checkbox" checked={showVolume} onChange={(e) => setShowVolume(e.target.checked)} />
           Volume
         </label>
+        {isRsi && (
+          <>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={showRsi} onChange={(e) => setShowRsi(e.target.checked)} />
+              RSI overlay
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={showChande} onChange={(e) => setShowChande(e.target.checked)} />
+              ChandeMO overlay
+            </label>
+          </>
+        )}
 
         <hr className="border-[#2a2d3e]" />
 
@@ -236,10 +278,17 @@ export default function Home() {
         >
           {backtestLoading ? "Running..." : "Run Backtest"}
         </button>
+        {isRsi && (
+          <p className="text-xs text-zinc-500">
+            RSI backtests run on 1H candles and can take a while over long ranges.
+          </p>
+        )}
       </aside>
 
       <main className="flex-1 p-4 space-y-4 overflow-y-auto">
-        <h1 className="text-xl font-semibold">EMA 50/200 Crypto Bot</h1>
+        <h1 className="text-xl font-semibold">
+          {isRsi ? "RSI + ChandeMO Crypto Bot · Long only" : "EMA 50/200 Crypto Bot"}
+        </h1>
 
         {toast && <div className="bg-green-900/50 border border-green-700 rounded px-3 py-2 text-sm">{toast}</div>}
         {error && <div className="bg-red-900/50 border border-red-700 rounded px-3 py-2 text-sm">{error}</div>}
@@ -253,19 +302,51 @@ export default function Home() {
               deltaPositive={priceChangePct >= 0}
               accent
             />
-            <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
-            <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
-            <Metric
-              label="Trend"
-              value={
-                <span className={`inline-flex items-center gap-1.5 ${last.emaFast > last.emaSlow ? "text-green-400" : "text-red-400"}`}>
-                  <span className={`h-2 w-2 rounded-full ${last.emaFast > last.emaSlow ? "bg-green-400" : "bg-red-400"}`} />
-                  {last.emaFast > last.emaSlow ? "Bullish" : "Bearish"}
-                </span>
-              }
-            />
+            {isRsi ? (
+              <>
+                <Metric label="RSI (4H)" value={last.rsi != null ? last.rsi.toFixed(1) : "—"} sub="length 14" valueColor={last.rsi > 80 ? "text-red-400" : "text-zinc-100"} />
+                <Metric label="RSI SMA" value={last.rsiSma != null ? last.rsiSma.toFixed(1) : "—"} sub="length 14" />
+                <Metric label="ChandeMO (1H)" value={last.chande != null ? last.chande.toFixed(1) : "—"} sub="length 4" valueColor={last.chande >= -100 && last.chande <= -50 ? "text-amber-400" : "text-zinc-100"} />
+              </>
+            ) : (
+              <>
+                <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
+                <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
+                <Metric
+                  label="Trend"
+                  value={
+                    <span className={`inline-flex items-center gap-1.5 ${last.emaFast > last.emaSlow ? "text-green-400" : "text-red-400"}`}>
+                      <span className={`h-2 w-2 rounded-full ${last.emaFast > last.emaSlow ? "bg-green-400" : "bg-red-400"}`} />
+                      {last.emaFast > last.emaSlow ? "Bullish" : "Bearish"}
+                    </span>
+                  }
+                />
+              </>
+            )}
             <Metric label="24h High" value={`$${last.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} valueColor="text-green-400/90" />
             <Metric label="24h Low" value={`$${last.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} valueColor="text-red-400/90" />
+          </div>
+        )}
+
+        {isRsi && last?.checks && (
+          <div className="bg-[#1e222d] border border-[#2a2d3e] rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Entry Conditions · latest closed candle</h3>
+              <span className={`text-xs px-2 py-0.5 rounded font-medium ${last.inPosition ? "bg-green-900/40 text-green-400" : "bg-zinc-700/40 text-zinc-400"}`}>
+                {last.inPosition ? "In position" : "Flat"}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+              <Check label="RSI > SMA" ok={last.checks.rsiAboveSma} detail={`${last.rsi?.toFixed(1) ?? "—"} vs ${last.rsiSma?.toFixed(1) ?? "—"}`} />
+              <Check label="RSI rising" ok={last.checks.rsiRising} detail={`prev ${last.rsiPrev?.toFixed(1) ?? "—"}`} />
+              <Check label="RSI < 80" ok={last.checks.rsiNotOverbought} detail={last.rsi?.toFixed(1) ?? "—"} />
+              <Check label="Chande in −100..−50" ok={last.checks.chandeInZone} detail={last.chande?.toFixed(1) ?? "—"} />
+              <Check label="Chande U-turn" ok={last.checks.chandeUturn} detail="3-candle bottom" />
+            </div>
+            <p className="text-xs text-zinc-500 mt-2">
+              All five must pass on a closed candle to open a long. Once open, entry conditions stop being
+              checked — the marker stays until an exit fires.
+            </p>
           </div>
         )}
 
@@ -296,12 +377,14 @@ export default function Home() {
           {candles.length > 0 && (
             <Chart
               candles={candles}
-              showEmaFast={showEmaFast}
-              showEmaSlow={showEmaSlow}
+              showEmaFast={!isRsi && showEmaFast}
+              showEmaSlow={!isRsi && showEmaSlow}
               showSignals={showSignals}
               showVolume={showVolume}
+              showRsi={isRsi && showRsi}
+              showChande={isRsi && showChande}
               pair={pair}
-              timeframe={timeframe}
+              timeframe={isRsi ? "1h" : timeframe}
             />
           )}
           {loading && (
@@ -318,6 +401,27 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {isRsi && (showRsi || showChande) && (
+          <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-400">
+            {showRsi && (
+              <>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-4 bg-[#a78bfa]" /> RSI 14 · 4H
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-4 bg-[#64748b]" /> RSI SMA 14
+                </span>
+              </>
+            )}
+            {showChande && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-0.5 w-4 bg-[#f39c12]" /> ChandeMO 4 · 1H
+              </span>
+            )}
+            <span className="text-zinc-600">overlaid on their own scales</span>
+          </div>
+        )}
 
         <p className="text-xs text-zinc-500">🖱 Scroll to zoom · Click & drag to pan</p>
 
@@ -391,8 +495,19 @@ export default function Home() {
                       <th className="py-2 pr-4 font-medium">Type</th>
                       <th className="py-2 pr-4 font-medium text-right">Price</th>
                       <th className="py-2 pr-4 font-medium text-right">Qty</th>
-                      <th className="py-2 pr-4 font-medium text-right">EMA Fast</th>
-                      <th className="py-2 pr-4 font-medium text-right">EMA Slow</th>
+                      {backtest.strategy === "rsi" ? (
+                        <>
+                          <th className="py-2 pr-4 font-medium text-right">RSI</th>
+                          <th className="py-2 pr-4 font-medium text-right">RSI SMA</th>
+                          <th className="py-2 pr-4 font-medium text-right">Chande</th>
+                          <th className="py-2 pr-4 font-medium text-right">Bars</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="py-2 pr-4 font-medium text-right">EMA Fast</th>
+                          <th className="py-2 pr-4 font-medium text-right">EMA Slow</th>
+                        </>
+                      )}
                       <th className="py-2 pr-4 font-medium text-right">PnL</th>
                       <th className="py-2 pr-4 font-medium">Reason</th>
                     </tr>
@@ -403,16 +518,22 @@ export default function Home() {
                       const isWin = (t.pnl || 0) > 0;
                       const reasonStyles = {
                         golden_cross: "bg-blue-900/40 text-blue-400",
+                        rsi_chande_long: "bg-blue-900/40 text-blue-400",
                         take_profit: "bg-green-900/40 text-green-400",
                         stop_loss: "bg-red-900/40 text-red-400",
                         death_cross: "bg-amber-900/40 text-amber-400",
+                        rsi_overbought: "bg-red-900/40 text-red-400",
+                        rsi_below_sma: "bg-amber-900/40 text-amber-400",
                         end_of_data: "bg-zinc-700/40 text-zinc-400",
                       };
                       const reasonLabels = {
                         golden_cross: "Golden Cross",
+                        rsi_chande_long: "RSI + Chande",
                         take_profit: "Take Profit",
                         stop_loss: "Stop Loss",
                         death_cross: "Death Cross",
+                        rsi_overbought: "RSI > 80",
+                        rsi_below_sma: "RSI < SMA",
                         end_of_data: "End of Data",
                       };
                       const tradeKey = `${t.date}-${i}`;
@@ -436,12 +557,23 @@ export default function Home() {
                             ${t.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.qty.toFixed(6)}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums text-amber-400/80">
-                            {t.emaFast != null ? `$${t.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
-                          </td>
-                          <td className="py-2 pr-4 text-right tabular-nums text-blue-400/80">
-                            {t.emaSlow != null ? `$${t.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
-                          </td>
+                          {backtest.strategy === "rsi" ? (
+                            <>
+                              <td className="py-2 pr-4 text-right tabular-nums text-violet-400/90">{t.rsi ?? "—"}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.rsiSma ?? "—"}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums text-amber-400/90">{t.chande ?? "—"}</td>
+                              <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.barsHeld ?? "—"}</td>
+                            </>
+                          ) : (
+                            <>
+                              <td className="py-2 pr-4 text-right tabular-nums text-amber-400/80">
+                                {t.emaFast != null ? `$${t.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
+                              </td>
+                              <td className="py-2 pr-4 text-right tabular-nums text-blue-400/80">
+                                {t.emaSlow != null ? `$${t.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
+                              </td>
+                            </>
+                          )}
                           <td className={`py-2 pr-4 text-right tabular-nums font-medium ${isBuy ? "text-zinc-500" : isWin ? "text-green-400" : "text-red-400"}`}>
                             {isBuy ? "—" : `${isWin ? "+" : ""}$${t.pnl.toFixed(2)}`}
                           </td>
@@ -597,6 +729,18 @@ function LogRow({ line }) {
         <td className="py-1.5 px-3 text-zinc-400" colSpan={4}>{parsed.message}</td>
       )}
     </tr>
+  );
+}
+
+function Check({ label, ok, detail }) {
+  return (
+    <div className={`flex items-start gap-2 rounded px-2 py-1.5 ${ok ? "bg-green-900/20" : "bg-[#131722]"}`}>
+      <span className={`mt-0.5 text-xs ${ok ? "text-green-400" : "text-zinc-600"}`}>{ok ? "✓" : "✗"}</span>
+      <div className="min-w-0">
+        <div className={`text-xs font-medium ${ok ? "text-green-400" : "text-zinc-400"}`}>{label}</div>
+        <div className="text-xs text-zinc-500 truncate">{detail}</div>
+      </div>
+    </div>
   );
 }
 

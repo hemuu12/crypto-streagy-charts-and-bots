@@ -9,6 +9,16 @@ export const TIMEFRAME = "4h";
 export const EMA_FAST = 50;
 export const EMA_SLOW = 200;
 
+// RSI + ChandeMO long-only strategy. RSI reads the 4H series, ChandeMO the 1H.
+export const RSI_TIMEFRAME = "4h";
+export const CHANDE_TIMEFRAME = "1h";
+export const RSI_LENGTH = 14;
+export const RSI_SMA_LENGTH = 14;
+export const RSI_OVERBOUGHT = 80;
+export const CHANDE_LENGTH = 4;
+export const CHANDE_ZONE_LOW = -100;
+export const CHANDE_ZONE_HIGH = -50;
+
 export const RISK_PER_TRADE = 0.02;
 export const STOP_LOSS_PCT = 0.02;
 export const TAKE_PROFIT_PCT = 0.04;

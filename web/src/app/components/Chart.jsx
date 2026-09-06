@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, showVolume, pair, timeframe }) {
+export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi = false, showChande = false, pair, timeframe }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
@@ -59,7 +59,47 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
     });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-    seriesRef.current = { candleSeries, markers, emaFastSeries, emaSlowSeries, volumeSeries };
+    // RSI and ChandeMO live on their own overlay scales so they can share the
+    // candle pane without being flattened by the price axis.
+    const rsiSeries = chart.addSeries(LineSeries, {
+      color: "#a78bfa",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      priceScaleId: "rsi",
+      title: "RSI 14 (4H)",
+    });
+    rsiSeries.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.55 } });
+
+    const rsiSmaSeries = chart.addSeries(LineSeries, {
+      color: "#64748b",
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      priceScaleId: "rsi",
+      title: "RSI SMA",
+    });
+
+    const chandeSeries = chart.addSeries(LineSeries, {
+      color: "#f39c12",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      priceScaleId: "chande",
+      title: "ChandeMO 4 (1H)",
+    });
+    chandeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.6, bottom: 0.02 } });
+
+    seriesRef.current = {
+      candleSeries,
+      markers,
+      emaFastSeries,
+      emaSlowSeries,
+      volumeSeries,
+      rsiSeries,
+      rsiSmaSeries,
+      chandeSeries,
+    };
 
     const handleResize = () => {
       if (containerRef.current) {
@@ -99,7 +139,16 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
 
   // Push new candle data without recreating the chart
   useEffect(() => {
-    const { candleSeries, markers, emaFastSeries, emaSlowSeries, volumeSeries } = seriesRef.current;
+    const {
+      candleSeries,
+      markers,
+      emaFastSeries,
+      emaSlowSeries,
+      volumeSeries,
+      rsiSeries,
+      rsiSmaSeries,
+      chandeSeries,
+    } = seriesRef.current;
     if (!candleSeries || !candles.length) return;
 
     candleSeries.setData(
@@ -139,8 +188,23 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
       }))
     );
 
+    const line = (key) =>
+      candles.filter((c) => c[key] != null).map((c) => ({ time: Math.floor(c.time / 1000), value: c[key] }));
+
+    rsiSeries.applyOptions({ visible: showRsi });
+    rsiSmaSeries.applyOptions({ visible: showRsi });
+    chandeSeries.applyOptions({ visible: showChande });
+
+    if (showRsi) {
+      rsiSeries.setData(line("rsi"));
+      rsiSmaSeries.setData(line("rsiSma"));
+    }
+    if (showChande) {
+      chandeSeries.setData(line("chande"));
+    }
+
     chartRef.current?.timeScale().fitContent();
-  }, [candles, showEmaFast, showEmaSlow, showSignals, showVolume]);
+  }, [candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi, showChande]);
 
   return <div ref={containerRef} className="w-full" />;
 }
