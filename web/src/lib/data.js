@@ -2,14 +2,14 @@ import ccxt from "ccxt";
 import * as config from "./config.js";
 
 export function getPublicExchange() {
-  return new ccxt.binance({
+  return new ccxt.bybit({
     enableRateLimit: true,
     options: { defaultType: "spot" },
   });
 }
 
 export function getPrivateExchange() {
-  return new ccxt.binance({
+  return new ccxt.bybit({
     apiKey: config.API_KEY,
     secret: config.API_SECRET,
     enableRateLimit: true,
