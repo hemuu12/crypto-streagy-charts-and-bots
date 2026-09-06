@@ -1,6 +1,0 @@
-streamlit
-streamlit-lightweight-charts
-pandas
-numpy
-ccxt
-python-dotenv
