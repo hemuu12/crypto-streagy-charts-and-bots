@@ -48,7 +48,8 @@ export default function Home() {
 
   const [showEmaFast, setShowEmaFast] = useState(true);
   const [showEmaSlow, setShowEmaSlow] = useState(true);
-  const [showSignals, setShowSignals] = useState(true);
+  const [showBuySignals, setShowBuySignals] = useState(true);
+  const [showSellSignals, setShowSellSignals] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [showRsi, setShowRsi] = useState(true);
   const [showChande, setShowChande] = useState(true);
@@ -268,8 +269,12 @@ export default function Home() {
           EMA Slow {(isPullback || isCombined) && "(200)"}
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showSignals} onChange={(e) => setShowSignals(e.target.checked)} />
-          Buy/Sell Signals
+          <input type="checkbox" checked={showBuySignals} onChange={(e) => setShowBuySignals(e.target.checked)} />
+          Buy Signals
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={showSellSignals} onChange={(e) => setShowSellSignals(e.target.checked)} />
+          Sell Signals
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={showVolume} onChange={(e) => setShowVolume(e.target.checked)} />
@@ -495,7 +500,8 @@ export default function Home() {
               candles={candles}
               showEmaFast={!isRsi && showEmaFast}
               showEmaSlow={!isRsi && showEmaSlow}
-              showSignals={showSignals}
+              showBuySignals={showBuySignals}
+              showSellSignals={showSellSignals}
               showVolume={showVolume}
               showRsi={(isRsi || isCombined) && showRsi}
               showChande={(isRsi || isPullback || isCombined) && showChande}

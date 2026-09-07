@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi = false, showChande = false, showEntryPriceLines = false, pair, timeframe }) {
+export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showSellSignals, showVolume, showRsi = false, showChande = false, showEntryPriceLines = false, pair, timeframe }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
@@ -157,19 +157,15 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
       candles.map((c) => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close }))
     );
 
-    if (showSignals) {
-      const m = [];
-      for (const c of candles) {
-        if (c.signal === 1) {
-          m.push({ time: Math.floor(c.time / 1000), position: "belowBar", color: "#2ecc71", shape: "arrowUp", text: "BUY" });
-        } else if (c.signal === -1) {
-          m.push({ time: Math.floor(c.time / 1000), position: "aboveBar", color: "#e74c3c", shape: "arrowDown", text: "SELL" });
-        }
+    const m = [];
+    for (const c of candles) {
+      if (showBuySignals && c.signal === 1) {
+        m.push({ time: Math.floor(c.time / 1000), position: "belowBar", color: "#2ecc71", shape: "arrowUp", text: "BUY" });
+      } else if (showSellSignals && c.signal === -1) {
+        m.push({ time: Math.floor(c.time / 1000), position: "aboveBar", color: "#e74c3c", shape: "arrowDown", text: "SELL" });
       }
-      markers.setMarkers(m);
-    } else {
-      markers.setMarkers([]);
     }
+    markers.setMarkers(m);
 
     // Anchor each BUY to its exact entry price with a horizontal line, rather
     // than only marking which candle triggered it — the price level is what
@@ -231,7 +227,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
     }
 
     chartRef.current?.timeScale().fitContent();
-  }, [candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi, showChande, showEntryPriceLines]);
+  }, [candles, showEmaFast, showEmaSlow, showBuySignals, showSellSignals, showVolume, showRsi, showChande, showEntryPriceLines]);
 
   return <div ref={containerRef} className="w-full" />;
 }
