@@ -1,3 +1,13 @@
+export function ema(values, span) {
+  const k = 2 / (span + 1);
+  const out = new Array(values.length);
+  out[0] = values[0];
+  for (let i = 1; i < values.length; i++) {
+    out[i] = values[i] * k + out[i - 1] * (1 - k);
+  }
+  return out;
+}
+
 export function rsi(values, length = 14) {
   const out = new Array(values.length).fill(null);
   if (values.length <= length) return out;
