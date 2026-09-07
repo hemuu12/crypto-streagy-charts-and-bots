@@ -3,10 +3,11 @@
 import { useEffect, useRef } from "react";
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi = false, showChande = false, pair, timeframe }) {
+export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi = false, showChande = false, showEntryPriceLines = false, pair, timeframe }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
+  const entryPriceLinesRef = useRef([]);
 
   // Mount chart + series once
   useEffect(() => {
@@ -114,6 +115,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
       chart.remove();
       chartRef.current = null;
       seriesRef.current = {};
+      entryPriceLinesRef.current = [];
     };
   }, []);
 
@@ -169,6 +171,31 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
       markers.setMarkers([]);
     }
 
+    // Anchor each BUY to its exact entry price with a horizontal line, rather
+    // than only marking which candle triggered it — the price level is what
+    // matters for the entry, not the time axis position.
+    for (const priceLine of entryPriceLinesRef.current) {
+      candleSeries.removePriceLine(priceLine);
+    }
+    entryPriceLinesRef.current = [];
+
+    if (showEntryPriceLines) {
+      for (const c of candles) {
+        if (c.signal === 1 && c.entryPrice != null) {
+          entryPriceLinesRef.current.push(
+            candleSeries.createPriceLine({
+              price: c.entryPrice,
+              color: "#2ecc71",
+              lineWidth: 1,
+              lineStyle: 2,
+              axisLabelVisible: true,
+              title: `BUY $${c.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+            })
+          );
+        }
+      }
+    }
+
     emaFastSeries.applyOptions({ visible: showEmaFast });
     emaFastSeries.setData(
       candles.filter((c) => c.emaFast != null).map((c) => ({ time: Math.floor(c.time / 1000), value: Math.round(c.emaFast * 1e4) / 1e4 }))
@@ -204,7 +231,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showSignals, 
     }
 
     chartRef.current?.timeScale().fitContent();
-  }, [candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi, showChande]);
+  }, [candles, showEmaFast, showEmaSlow, showSignals, showVolume, showRsi, showChande, showEntryPriceLines]);
 
   return <div ref={containerRef} className="w-full" />;
 }

@@ -20,18 +20,14 @@ export const CHANDE_ZONE_LOW = -100;
 export const CHANDE_ZONE_HIGH = -50;
 
 // CMO-EMA Bullish Pullback: EMA 50/200 and CMO both read the 1H series.
-// Entry needs EMA 50 > EMA 200, plus CMO having risen from the extreme
-// negative region (<= -95) and now landing in a band around -80 (rather
-// than merely crossing through it, since CMO(4) is volatile enough to gap
-// from -100 to -5 in a single 1H candle).
+// Entry needs EMA 50 > EMA 200, plus CMO currently sitting in the -100..-80
+// zone and rising versus the previous candle.
 export const PULLBACK_TIMEFRAME = "1h";
 export const PULLBACK_EMA_FAST = 50;
 export const PULLBACK_EMA_SLOW = 200;
 export const PULLBACK_CMO_LENGTH = 4;
-export const PULLBACK_CMO_EXTREME = -95;
-export const PULLBACK_CMO_TARGET = -80;
-export const PULLBACK_CMO_TARGET_BAND = 10; // qualifying zone: -90..-70
-export const PULLBACK_CMO_LOOKBACK = 20;
+export const PULLBACK_CMO_ZONE_LOW = -100;
+export const PULLBACK_CMO_ZONE_HIGH = -80;
 
 export const RISK_PER_TRADE = 0.02;
 export const STOP_LOSS_PCT = 0.02;

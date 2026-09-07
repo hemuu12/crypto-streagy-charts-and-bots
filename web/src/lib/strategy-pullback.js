@@ -3,44 +3,17 @@ import {
   PULLBACK_EMA_FAST,
   PULLBACK_EMA_SLOW,
   PULLBACK_CMO_LENGTH,
-  PULLBACK_CMO_EXTREME,
-  PULLBACK_CMO_TARGET,
-  PULLBACK_CMO_TARGET_BAND,
-  PULLBACK_CMO_LOOKBACK,
+  PULLBACK_CMO_ZONE_LOW,
+  PULLBACK_CMO_ZONE_HIGH,
 } from "./config.js";
-
-const BAND_LOW = PULLBACK_CMO_TARGET - PULLBACK_CMO_TARGET_BAND;
-const BAND_HIGH = PULLBACK_CMO_TARGET + PULLBACK_CMO_TARGET_BAND;
-
-// Was the CMO down at the extreme negative region within the lookback window,
-// with no candle since then closing back below it? That is the "travelled
-// upward from -100 toward -80" requirement — a bottom near -100 followed by a
-// rise, not merely CMO sitting somewhere in the range.
-function cameFromExtreme(cmoSeries, i) {
-  const from = Math.max(0, i - PULLBACK_CMO_LOOKBACK);
-  let sawExtreme = false;
-  for (let j = i - 1; j >= from; j--) {
-    const v = cmoSeries[j];
-    if (v == null) break;
-    if (v <= PULLBACK_CMO_EXTREME) {
-      sawExtreme = true;
-      break;
-    }
-    if (v > BAND_HIGH) break; // already left the range going the other way
-  }
-  return sawExtreme;
-}
 
 function entryChecks(c, cmoSeries, i) {
   const cmo = cmoSeries[i];
   const prevCmo = cmoSeries[i - 1];
   return {
     emaBullish: c.emaFast != null && c.emaSlow != null && c.emaFast > c.emaSlow,
-    // CMO has arrived in the -80 band (not blown through it) while still
-    // climbing from a lower reading, and previously bottomed out near -100.
-    cmoInTargetBand: cmo != null && cmo >= BAND_LOW && cmo <= BAND_HIGH,
-    cmoRisingIntoBand: cmo != null && prevCmo != null && cmo > prevCmo,
-    cmoCameFromExtreme: cmo != null && cameFromExtreme(cmoSeries, i),
+    cmoInZone: cmo != null && cmo >= PULLBACK_CMO_ZONE_LOW && cmo <= PULLBACK_CMO_ZONE_HIGH,
+    cmoRising: cmo != null && prevCmo != null && cmo > prevCmo,
   };
 }
 

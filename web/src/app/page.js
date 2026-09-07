@@ -161,6 +161,9 @@ export default function Home() {
       setBacktest(data);
       setTradeReasonFilter("all");
       loadBacktestHistory();
+      if (data.trades && data.trades.length) {
+        setFocusDate(data.trades[0].date);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -202,14 +205,14 @@ export default function Home() {
         )}
         {isPullback && (
           <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
-            EMA 50/200 + CMO 4, all on 1H · long only. Entry needs EMA 50 &gt; EMA 200 and CMO having
-            risen from ≤ −95 into the −70..−90 band. Timeframe is fixed for this strategy.
+            EMA 50/200 + CMO 4, all on 1H · long only. Entry needs EMA 50 &gt; EMA 200 and CMO
+            currently in the −100..−80 zone and rising. Timeframe is fixed for this strategy.
           </div>
         )}
         {isCombined && (
           <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
             Every condition from both other strategies at once: EMA 50 &gt; EMA 200 (1H), RSI(4H) above
-            its SMA / rising / under 80, and CMO(1H) risen from ≤ −95 into the −70..−90 band. Very
+            its SMA / rising / under 80, and CMO(1H, length 4) in the −100..−80 zone and rising. Very
             selective — few signals by design. Timeframe is fixed for this strategy.
           </div>
         )}
@@ -366,7 +369,7 @@ export default function Home() {
               <>
                 <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
                 <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
-                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub="length 4" valueColor={last.cmo >= -90 && last.cmo <= -70 ? "text-amber-400" : "text-zinc-100"} />
+                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub="length 4" valueColor={last.cmo >= -100 && last.cmo <= -80 ? "text-amber-400" : "text-zinc-100"} />
               </>
             )}
             {isCombined && (
@@ -374,7 +377,7 @@ export default function Home() {
                 <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
                 <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
                 <Metric label="RSI (4H)" value={last.rsi != null ? last.rsi.toFixed(1) : "—"} sub="length 14" valueColor={last.rsi > 80 ? "text-red-400" : "text-zinc-100"} />
-                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub="length 4" valueColor={last.cmo >= -90 && last.cmo <= -70 ? "text-amber-400" : "text-zinc-100"} />
+                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub="length 4" valueColor={last.cmo >= -100 && last.cmo <= -80 ? "text-amber-400" : "text-zinc-100"} />
               </>
             )}
             {strategy === "ema" && (
@@ -427,14 +430,13 @@ export default function Home() {
                 {last.inPosition ? "In position" : "Flat"}
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               <Check label="EMA 50 > EMA 200" ok={last.checks.emaBullish} detail={`${last.emaFast?.toFixed(0) ?? "—"} vs ${last.emaSlow?.toFixed(0) ?? "—"}`} />
-              <Check label="CMO in −70..−90" ok={last.checks.cmoInTargetBand} detail={last.cmo?.toFixed(1) ?? "—"} />
-              <Check label="CMO rising" ok={last.checks.cmoRisingIntoBand} detail="vs prev candle" />
-              <Check label="CMO from ≤ −95" ok={last.checks.cmoCameFromExtreme} detail="within lookback" />
+              <Check label="CMO in −100..−80" ok={last.checks.cmoInZone} detail={last.cmo?.toFixed(1) ?? "—"} />
+              <Check label="CMO rising" ok={last.checks.cmoRising} detail="vs prev candle" />
             </div>
             <p className="text-xs text-zinc-500 mt-2">
-              All four must pass on a closed candle to open a long. Once open, entry conditions stop being
+              All three must pass on a closed candle to open a long. Once open, entry conditions stop being
               checked — the marker stays until an exit fires.
             </p>
           </div>
@@ -453,12 +455,11 @@ export default function Home() {
               <Check label="RSI > SMA" ok={last.checks.rsiAboveSma} detail={`${last.rsi?.toFixed(1) ?? "—"} vs ${last.rsiSma?.toFixed(1) ?? "—"}`} />
               <Check label="RSI rising" ok={last.checks.rsiRising} detail="4H" />
               <Check label="RSI < 80" ok={last.checks.rsiNotOverbought} detail={last.rsi?.toFixed(1) ?? "—"} />
-              <Check label="CMO in −70..−90" ok={last.checks.cmoInTargetBand} detail={last.cmo?.toFixed(1) ?? "—"} />
-              <Check label="CMO rising" ok={last.checks.cmoRisingIntoBand} detail="vs prev candle" />
-              <Check label="CMO from ≤ −95" ok={last.checks.cmoCameFromExtreme} detail="within lookback" />
+              <Check label="CMO in −100..−80" ok={last.checks.cmoInZone} detail={last.cmo?.toFixed(1) ?? "—"} />
+              <Check label="CMO rising" ok={last.checks.cmoRising} detail="vs prev candle" />
             </div>
             <p className="text-xs text-zinc-500 mt-2">
-              All seven must pass on a closed candle to open a long — every condition from both source
+              All six must pass on a closed candle to open a long — every condition from both source
               strategies at once. Once open, entry conditions stop being checked — the marker stays until
               an exit fires.
             </p>
@@ -498,6 +499,7 @@ export default function Home() {
               showVolume={showVolume}
               showRsi={(isRsi || isCombined) && showRsi}
               showChande={(isRsi || isPullback || isCombined) && showChande}
+              showEntryPriceLines={isPullback || isCombined}
               pair={pair}
               timeframe={usesFixed1h ? "1h" : timeframe}
             />

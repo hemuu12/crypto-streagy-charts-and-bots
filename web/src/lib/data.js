@@ -42,7 +42,15 @@ export async function fetchHistorical(symbol, start, end, timeframe = config.TIM
 
   let all = [];
   while (since < endTs) {
-    const candles = await exchange.fetchOHLCV(symbol, timeframe, since, 1000);
+    let candles;
+    try {
+      candles = await exchange.fetchOHLCV(symbol, timeframe, since, 1000);
+    } catch (e) {
+      // OKX can 404 once `since` overshoots the latest available candle
+      // instead of returning an empty page — treat that the same as "no more data".
+      if (String(e.message || e).includes("resource-not-found") || String(e.message || e).includes("404")) break;
+      throw e;
+    }
     if (!candles.length) break;
     all = all.concat(candles);
     since = candles[candles.length - 1][0] + 1;
