@@ -5,16 +5,18 @@ import {
   PULLBACK_CMO_LENGTH,
   PULLBACK_CMO_ZONE_LOW,
   PULLBACK_CMO_ZONE_HIGH,
+  PULLBACK_CMO_RISE_MIN,
 } from "./config.js";
 
 function entryChecks(c, cmoSeries, i) {
   const cmo = cmoSeries[i];
   const prevCmo = cmoSeries[i - 1];
-  return {
-    emaBullish: c.emaFast != null && c.emaSlow != null && c.emaFast > c.emaSlow,
-    cmoInZone: cmo != null && cmo >= PULLBACK_CMO_ZONE_LOW && cmo <= PULLBACK_CMO_ZONE_HIGH,
-    cmoRising: cmo != null && prevCmo != null && cmo > prevCmo,
-  };
+  const emaBullish = c.emaFast != null && c.emaSlow != null && c.emaFast > c.emaSlow;
+  // Last condition checked: CMO sitting in the -100..-30 zone and jumping at
+  // least PULLBACK_CMO_RISE_MIN points versus the previous candle.
+  const cmoZoneRise =
+    cmo != null && prevCmo != null && cmo >= PULLBACK_CMO_ZONE_LOW && cmo <= PULLBACK_CMO_ZONE_HIGH && cmo - prevCmo >= PULLBACK_CMO_RISE_MIN;
+  return { emaBullish, cmoZoneRise };
 }
 
 function exitReason(c, entry) {

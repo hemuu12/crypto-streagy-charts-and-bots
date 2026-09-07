@@ -6,8 +6,8 @@ import {
   RSI_SMA_LENGTH,
   RSI_OVERBOUGHT,
   PULLBACK_CMO_LENGTH,
-  PULLBACK_CMO_ZONE_LOW,
-  PULLBACK_CMO_ZONE_HIGH,
+  COMBINED_CMO_ZONE_LOW,
+  COMBINED_CMO_ZONE_HIGH,
 } from "./config.js";
 
 // Maps 4H RSI onto 1H candles, carrying only the most recent CLOSED 4H value —
@@ -37,7 +37,7 @@ function entryChecks(c, cmoSeries, i) {
     rsiAboveSma: c.rsi != null && c.rsiSma != null && c.rsi > c.rsiSma,
     rsiRising: c.rsi != null && c.rsiPrev != null && c.rsi > c.rsiPrev,
     rsiNotOverbought: c.rsi != null && c.rsi < RSI_OVERBOUGHT,
-    cmoInZone: cmo != null && cmo >= PULLBACK_CMO_ZONE_LOW && cmo <= PULLBACK_CMO_ZONE_HIGH,
+    cmoInZone: cmo != null && cmo >= COMBINED_CMO_ZONE_LOW && cmo <= COMBINED_CMO_ZONE_HIGH,
     cmoRising: cmo != null && prevCmo != null && cmo > prevCmo,
   };
 }

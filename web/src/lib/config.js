@@ -20,14 +20,21 @@ export const CHANDE_ZONE_LOW = -100;
 export const CHANDE_ZONE_HIGH = -50;
 
 // CMO-EMA Bullish Pullback: EMA 50/200 and CMO both read the 1H series.
-// Entry needs EMA 50 > EMA 200, plus CMO currently sitting in the -100..-80
-// zone and rising versus the previous candle.
+// Entry needs EMA 50 > EMA 200, plus CMO sitting in the -100..-30 zone and
+// jumping at least PULLBACK_CMO_RISE_MIN points versus the previous candle —
+// this is the last condition checked.
 export const PULLBACK_TIMEFRAME = "1h";
 export const PULLBACK_EMA_FAST = 50;
 export const PULLBACK_EMA_SLOW = 200;
 export const PULLBACK_CMO_LENGTH = 4;
 export const PULLBACK_CMO_ZONE_LOW = -100;
-export const PULLBACK_CMO_ZONE_HIGH = -80;
+export const PULLBACK_CMO_ZONE_HIGH = -30;
+export const PULLBACK_CMO_RISE_MIN = 10;
+
+// Combined strategy keeps its own, separate CMO zone (unaffected by the
+// Pullback-only zone widening above): -100..-80, simple rising check.
+export const COMBINED_CMO_ZONE_LOW = -100;
+export const COMBINED_CMO_ZONE_HIGH = -80;
 
 export const RISK_PER_TRADE = 0.02;
 export const STOP_LOSS_PCT = 0.02;

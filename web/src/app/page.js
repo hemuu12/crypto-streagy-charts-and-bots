@@ -209,7 +209,8 @@ export default function Home() {
         {isPullback && (
           <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
             EMA 50/200 + CMO {cmoLength}, all on 1H · long only. Entry needs EMA 50 &gt; EMA 200 and CMO
-            currently in the −100..−80 zone and rising. Timeframe is fixed for this strategy.
+            sitting between −100 and −30 while jumping at least 10 points versus the previous candle
+            (last condition checked). Timeframe is fixed for this strategy.
           </div>
         )}
         {isCombined && (
@@ -390,7 +391,7 @@ export default function Home() {
               <>
                 <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
                 <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
-                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= -100 && last.cmo <= -80 ? "text-amber-400" : "text-zinc-100"} />
+                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= -100 && last.cmo <= -30 ? "text-amber-400" : "text-zinc-100"} />
               </>
             )}
             {isCombined && (
@@ -453,11 +454,10 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               <Check label="EMA 50 > EMA 200" ok={last.checks.emaBullish} detail={`${last.emaFast?.toFixed(0) ?? "—"} vs ${last.emaSlow?.toFixed(0) ?? "—"}`} />
-              <Check label="CMO in −100..−80" ok={last.checks.cmoInZone} detail={last.cmo?.toFixed(1) ?? "—"} />
-              <Check label="CMO rising" ok={last.checks.cmoRising} detail="vs prev candle" />
+              <Check label="CMO −100..−30, +10 rise" ok={last.checks.cmoZoneRise} detail={last.cmo?.toFixed(1) ?? "—"} />
             </div>
             <p className="text-xs text-zinc-500 mt-2">
-              All three must pass on a closed candle to open a long. Once open, entry conditions stop being
+              Both must pass on a closed candle to open a long. Once open, entry conditions stop being
               checked — the marker stays until an exit fires.
             </p>
           </div>
