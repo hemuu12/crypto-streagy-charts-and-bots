@@ -67,12 +67,12 @@ export function dropFormingCandle(candles, timeframeMs) {
  * stop-loss, take-profit, EMA flipping bearish, RSI going overbought, or RSI
  * dropping below its SMA.
  */
-export function generateCombinedSignals(candles1h, candles4h, { stopLossPct, takeProfitPct }) {
+export function generateCombinedSignals(candles1h, candles4h, { stopLossPct, takeProfitPct, cmoLength = PULLBACK_CMO_LENGTH }) {
   const mapped = mapHigherTimeframe(candles1h, candles4h);
   const closes = mapped.map((c) => c.close);
   const emaFast = ema(closes, PULLBACK_EMA_FAST);
   const emaSlow = ema(closes, PULLBACK_EMA_SLOW);
-  const cmo = chandeMO(closes, PULLBACK_CMO_LENGTH);
+  const cmo = chandeMO(closes, cmoLength);
 
   const withIndicators = mapped.map((c, i) => ({
     ...c,

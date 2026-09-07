@@ -37,11 +37,11 @@ export function dropFormingCandle(candles, timeframeMs) {
  * cannot repaint. It clears only on stop-loss, take-profit, or the EMA trend
  * flipping bearish.
  */
-export function generatePullbackSignals(candles, { stopLossPct, takeProfitPct }) {
+export function generatePullbackSignals(candles, { stopLossPct, takeProfitPct, cmoLength = PULLBACK_CMO_LENGTH }) {
   const closes = candles.map((c) => c.close);
   const emaFast = ema(closes, PULLBACK_EMA_FAST);
   const emaSlow = ema(closes, PULLBACK_EMA_SLOW);
-  const cmo = chandeMO(closes, PULLBACK_CMO_LENGTH);
+  const cmo = chandeMO(closes, cmoLength);
 
   const withIndicators = candles.map((c, i) => ({
     ...c,

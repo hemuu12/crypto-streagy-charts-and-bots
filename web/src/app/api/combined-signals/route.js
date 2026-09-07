@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchOHLCV, fetchHistorical } from "@/lib/data.js";
 import { generateCombinedSignals, dropFormingCandle } from "@/lib/strategy-combined.js";
-import { RSI_TIMEFRAME, CHANDE_TIMEFRAME, STOP_LOSS_PCT, TAKE_PROFIT_PCT, PULLBACK_EMA_SLOW } from "@/lib/config.js";
+import { RSI_TIMEFRAME, CHANDE_TIMEFRAME, STOP_LOSS_PCT, TAKE_PROFIT_PCT, PULLBACK_EMA_SLOW, PULLBACK_CMO_LENGTH } from "@/lib/config.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -10,6 +10,7 @@ export async function GET(request) {
   const pair = searchParams.get("pair") || "BTC/USDT";
   const limit = Number(searchParams.get("limit") || 250);
   const around = searchParams.get("around");
+  const cmoLength = Number(searchParams.get("cmoLength") || PULLBACK_CMO_LENGTH);
 
   try {
     let raw1h;
@@ -38,6 +39,7 @@ export async function GET(request) {
     const evaluated = generateCombinedSignals(candles1h, candles4h, {
       stopLossPct: STOP_LOSS_PCT,
       takeProfitPct: TAKE_PROFIT_PCT,
+      cmoLength,
     });
 
     const trimmed = around ? evaluated : evaluated.slice(-limit);

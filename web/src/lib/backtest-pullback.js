@@ -1,7 +1,7 @@
 import { fetchHistorical } from "./data.js";
 import { generatePullbackSignals } from "./strategy-pullback.js";
 import { saveBacktestRun } from "./history.js";
-import { PULLBACK_TIMEFRAME, INITIAL_CAPITAL, STOP_LOSS_PCT, TAKE_PROFIT_PCT, RISK_PER_TRADE } from "./config.js";
+import { PULLBACK_TIMEFRAME, INITIAL_CAPITAL, STOP_LOSS_PCT, TAKE_PROFIT_PCT, RISK_PER_TRADE, PULLBACK_CMO_LENGTH } from "./config.js";
 
 function round(value, decimals) {
   if (value == null) return null;
@@ -17,11 +17,12 @@ function snapshot(c) {
   };
 }
 
-export async function runPullbackBacktest(symbol, start, end) {
+export async function runPullbackBacktest(symbol, start, end, cmoLength = PULLBACK_CMO_LENGTH) {
   const raw = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
   const evaluated = generatePullbackSignals(raw, {
     stopLossPct: STOP_LOSS_PCT,
     takeProfitPct: TAKE_PROFIT_PCT,
+    cmoLength,
   });
 
   let capital = INITIAL_CAPITAL;
@@ -87,6 +88,7 @@ export async function runPullbackBacktest(symbol, start, end) {
     symbol,
     start,
     end,
+    cmoLength,
     initialCapital: INITIAL_CAPITAL,
     finalCapital: round(capital, 2),
     totalPnl: round(totalPnl, 2),

@@ -11,12 +11,14 @@ export async function GET(request) {
   const start = searchParams.get("start") || BACKTEST_START;
   const end = searchParams.get("end") || BACKTEST_END;
   const strategy = searchParams.get("strategy") || "ema";
+  const cmoLengthParam = searchParams.get("cmoLength");
+  const cmoLength = cmoLengthParam ? Number(cmoLengthParam) : undefined;
 
   try {
     let result;
     if (strategy === "rsi") result = await runRsiBacktest(pair, start, end);
-    else if (strategy === "pullback") result = await runPullbackBacktest(pair, start, end);
-    else if (strategy === "combined") result = await runCombinedBacktest(pair, start, end);
+    else if (strategy === "pullback") result = await runPullbackBacktest(pair, start, end, cmoLength);
+    else if (strategy === "combined") result = await runCombinedBacktest(pair, start, end, cmoLength);
     else result = await runBacktest(pair, start, end);
     return NextResponse.json(result);
   } catch (e) {

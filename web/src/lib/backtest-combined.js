@@ -8,6 +8,7 @@ import {
   STOP_LOSS_PCT,
   TAKE_PROFIT_PCT,
   RISK_PER_TRADE,
+  PULLBACK_CMO_LENGTH,
 } from "./config.js";
 
 function round(value, decimals) {
@@ -26,7 +27,7 @@ function snapshot(c) {
   };
 }
 
-export async function runCombinedBacktest(symbol, start, end) {
+export async function runCombinedBacktest(symbol, start, end, cmoLength = PULLBACK_CMO_LENGTH) {
   const [raw1h, raw4h] = await Promise.all([
     fetchHistorical(symbol, start, end, CHANDE_TIMEFRAME),
     fetchHistorical(symbol, start, end, RSI_TIMEFRAME),
@@ -35,6 +36,7 @@ export async function runCombinedBacktest(symbol, start, end) {
   const evaluated = generateCombinedSignals(raw1h, raw4h, {
     stopLossPct: STOP_LOSS_PCT,
     takeProfitPct: TAKE_PROFIT_PCT,
+    cmoLength,
   });
 
   let capital = INITIAL_CAPITAL;
@@ -100,6 +102,7 @@ export async function runCombinedBacktest(symbol, start, end) {
     symbol,
     start,
     end,
+    cmoLength,
     initialCapital: INITIAL_CAPITAL,
     finalCapital: round(capital, 2),
     totalPnl: round(totalPnl, 2),

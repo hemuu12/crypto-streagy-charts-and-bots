@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchOHLCV, fetchHistorical } from "@/lib/data.js";
 import { generatePullbackSignals, dropFormingCandle } from "@/lib/strategy-pullback.js";
-import { PULLBACK_TIMEFRAME, STOP_LOSS_PCT, TAKE_PROFIT_PCT, PULLBACK_EMA_SLOW } from "@/lib/config.js";
+import { PULLBACK_TIMEFRAME, STOP_LOSS_PCT, TAKE_PROFIT_PCT, PULLBACK_EMA_SLOW, PULLBACK_CMO_LENGTH } from "@/lib/config.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -10,6 +10,7 @@ export async function GET(request) {
   const pair = searchParams.get("pair") || "BTC/USDT";
   const limit = Number(searchParams.get("limit") || 250);
   const around = searchParams.get("around");
+  const cmoLength = Number(searchParams.get("cmoLength") || PULLBACK_CMO_LENGTH);
 
   try {
     let raw;
@@ -28,6 +29,7 @@ export async function GET(request) {
     const evaluated = generatePullbackSignals(candles, {
       stopLossPct: STOP_LOSS_PCT,
       takeProfitPct: TAKE_PROFIT_PCT,
+      cmoLength,
     });
 
     // Trim the EMA warm-up lead-in for the live view; keep full history for "around".

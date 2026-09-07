@@ -40,6 +40,7 @@ export default function Home() {
   const [pair, setPair] = useState("BTC/USDT");
   const [timeframe, setTimeframe] = useState("4h");
   const [candleLimit, setCandleLimit] = useState(250);
+  const [cmoLength, setCmoLength] = useState(4);
 
   const isRsi = strategy === "rsi";
   const isPullback = strategy === "pullback";
@@ -77,8 +78,8 @@ export default function Home() {
     try {
       let url;
       if (isRsi) url = `/api/rsi-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}`;
-      else if (isPullback) url = `/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}`;
-      else if (isCombined) url = `/api/combined-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}`;
+      else if (isPullback) url = `/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}`;
+      else if (isCombined) url = `/api/combined-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}`;
       else url = `/api/chart-data?pair=${encodeURIComponent(pair)}&timeframe=${timeframe}&limit=${candleLimit}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
@@ -90,7 +91,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, timeframe, candleLimit, focusDate, isRsi, isPullback, isCombined]);
+  }, [pair, timeframe, candleLimit, focusDate, isRsi, isPullback, isCombined, cmoLength]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch("/api/positions");
@@ -154,8 +155,9 @@ export default function Home() {
   async function runBacktest() {
     setBacktestLoading(true);
     try {
+      const cmoParam = isPullback || isCombined ? `&cmoLength=${cmoLength}` : "";
       const res = await fetch(
-        `/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}&strategy=${strategy}`
+        `/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}&strategy=${strategy}${cmoParam}`
       );
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -206,16 +208,30 @@ export default function Home() {
         )}
         {isPullback && (
           <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
-            EMA 50/200 + CMO 4, all on 1H · long only. Entry needs EMA 50 &gt; EMA 200 and CMO
+            EMA 50/200 + CMO {cmoLength}, all on 1H · long only. Entry needs EMA 50 &gt; EMA 200 and CMO
             currently in the −100..−80 zone and rising. Timeframe is fixed for this strategy.
           </div>
         )}
         {isCombined && (
           <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
             Every condition from both other strategies at once: EMA 50 &gt; EMA 200 (1H), RSI(4H) above
-            its SMA / rising / under 80, and CMO(1H, length 4) in the −100..−80 zone and rising. Very
+            its SMA / rising / under 80, and CMO(1H, length {cmoLength}) in the −100..−80 zone and rising. Very
             selective — few signals by design. Timeframe is fixed for this strategy.
           </div>
+        )}
+        {(isPullback || isCombined) && (
+          <label className="block text-sm">
+            CMO length: <span className="text-zinc-100 font-medium">{cmoLength}</span>
+            <input
+              type="range"
+              min="2"
+              max="30"
+              step="1"
+              value={cmoLength}
+              onChange={(e) => setCmoLength(Number(e.target.value))}
+              className="w-full accent-emerald-500"
+            />
+          </label>
         )}
 
         <label className="block text-sm">
@@ -374,7 +390,7 @@ export default function Home() {
               <>
                 <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
                 <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
-                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub="length 4" valueColor={last.cmo >= -100 && last.cmo <= -80 ? "text-amber-400" : "text-zinc-100"} />
+                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= -100 && last.cmo <= -80 ? "text-amber-400" : "text-zinc-100"} />
               </>
             )}
             {isCombined && (
@@ -382,7 +398,7 @@ export default function Home() {
                 <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
                 <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
                 <Metric label="RSI (4H)" value={last.rsi != null ? last.rsi.toFixed(1) : "—"} sub="length 14" valueColor={last.rsi > 80 ? "text-red-400" : "text-zinc-100"} />
-                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub="length 4" valueColor={last.cmo >= -100 && last.cmo <= -80 ? "text-amber-400" : "text-zinc-100"} />
+                <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= -100 && last.cmo <= -80 ? "text-amber-400" : "text-zinc-100"} />
               </>
             )}
             {strategy === "ema" && (
