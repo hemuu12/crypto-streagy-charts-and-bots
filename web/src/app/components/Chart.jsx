@@ -194,7 +194,9 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
 
     emaFastSeries.applyOptions({ visible: showEmaFast });
     emaFastSeries.setData(
-      candles.filter((c) => c.emaFast != null).map((c) => ({ time: Math.floor(c.time / 1000), value: Math.round(c.emaFast * 1e4) / 1e4 }))
+      candles
+        .filter((c) => (c.ema ?? c.emaFast) != null)
+        .map((c) => ({ time: Math.floor(c.time / 1000), value: Math.round((c.ema ?? c.emaFast) * 1e4) / 1e4 }))
     );
 
     emaSlowSeries.applyOptions({ visible: showEmaSlow });

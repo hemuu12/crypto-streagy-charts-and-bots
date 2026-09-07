@@ -13,11 +13,13 @@ export async function GET(request) {
   const strategy = searchParams.get("strategy") || "ema";
   const cmoLengthParam = searchParams.get("cmoLength");
   const cmoLength = cmoLengthParam ? Number(cmoLengthParam) : undefined;
+  const emaLengthParam = searchParams.get("emaLength");
+  const emaLength = emaLengthParam ? Number(emaLengthParam) : undefined;
 
   try {
     let result;
     if (strategy === "rsi") result = await runRsiBacktest(pair, start, end);
-    else if (strategy === "pullback") result = await runPullbackBacktest(pair, start, end, cmoLength);
+    else if (strategy === "pullback") result = await runPullbackBacktest(pair, start, end, cmoLength, emaLength);
     else if (strategy === "combined") result = await runCombinedBacktest(pair, start, end, cmoLength);
     else result = await runBacktest(pair, start, end);
     return NextResponse.json(result);

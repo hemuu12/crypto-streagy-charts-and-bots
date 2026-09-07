@@ -1,7 +1,6 @@
 import { ema, chandeMO } from "./indicators.js";
 import {
-  PULLBACK_EMA_FAST,
-  PULLBACK_EMA_SLOW,
+  PULLBACK_EMA_LENGTH,
   PULLBACK_CMO_LENGTH,
   PULLBACK_CMO_ZONE_LOW,
   PULLBACK_CMO_ZONE_HIGH,
@@ -11,18 +10,18 @@ import {
 function entryChecks(c, cmoSeries, i) {
   const cmo = cmoSeries[i];
   const prevCmo = cmoSeries[i - 1];
-  const emaBullish = c.emaFast != null && c.emaSlow != null && c.emaFast > c.emaSlow;
+  const priceAboveEma = c.ema != null && c.close > c.ema;
   // Last condition checked: CMO sitting in the -100..-30 zone and jumping at
   // least PULLBACK_CMO_RISE_MIN points versus the previous candle.
   const cmoZoneRise =
     cmo != null && prevCmo != null && cmo >= PULLBACK_CMO_ZONE_LOW && cmo <= PULLBACK_CMO_ZONE_HIGH && cmo - prevCmo >= PULLBACK_CMO_RISE_MIN;
-  return { emaBullish, cmoZoneRise };
+  return { priceAboveEma, cmoZoneRise };
 }
 
 function exitReason(c, entry) {
   if (c.close <= entry.stopLoss) return "stop_loss";
   if (c.close >= entry.takeProfit) return "take_profit";
-  if (c.emaFast != null && c.emaSlow != null && c.emaFast < c.emaSlow) return "ema_bear_cross";
+  if (c.ema != null && c.close < c.ema) return "price_below_ema";
   return null;
 }
 
@@ -33,22 +32,23 @@ export function dropFormingCandle(candles, timeframeMs) {
 }
 
 /**
- * EMA 50/200 bullish filter + CMO pullback-and-recovery, long only. Signals
+ * Single-EMA bullish filter + CMO pullback-and-recovery, long only. Signals
  * lock the same way as the RSI+ChandeMO strategy: once a position opens,
  * entry conditions stop being checked, so the BUY marker is permanent and
- * cannot repaint. It clears only on stop-loss, take-profit, or the EMA trend
- * flipping bearish.
+ * cannot repaint. It clears only on stop-loss, take-profit, or price closing
+ * back below the EMA.
  */
-export function generatePullbackSignals(candles, { stopLossPct, takeProfitPct, cmoLength = PULLBACK_CMO_LENGTH }) {
+export function generatePullbackSignals(
+  candles,
+  { stopLossPct, takeProfitPct, cmoLength = PULLBACK_CMO_LENGTH, emaLength = PULLBACK_EMA_LENGTH }
+) {
   const closes = candles.map((c) => c.close);
-  const emaFast = ema(closes, PULLBACK_EMA_FAST);
-  const emaSlow = ema(closes, PULLBACK_EMA_SLOW);
+  const emaSeries = ema(closes, emaLength);
   const cmo = chandeMO(closes, cmoLength);
 
   const withIndicators = candles.map((c, i) => ({
     ...c,
-    emaFast: emaFast[i],
-    emaSlow: emaSlow[i],
+    ema: emaSeries[i],
     cmo: cmo[i],
   }));
 
@@ -94,8 +94,7 @@ export function getLatestPullbackSignal(evaluated) {
   return {
     signal: last.signal,
     close: last.close,
-    emaFast: last.emaFast,
-    emaSlow: last.emaSlow,
+    ema: last.ema,
     cmo: last.cmo,
     checks: last.checks,
     inPosition: last.inPosition,

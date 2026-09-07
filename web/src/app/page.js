@@ -41,6 +41,7 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState("4h");
   const [candleLimit, setCandleLimit] = useState(250);
   const [cmoLength, setCmoLength] = useState(4);
+  const [emaLength, setEmaLength] = useState(50);
 
   const isRsi = strategy === "rsi";
   const isPullback = strategy === "pullback";
@@ -78,7 +79,7 @@ export default function Home() {
     try {
       let url;
       if (isRsi) url = `/api/rsi-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}`;
-      else if (isPullback) url = `/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}`;
+      else if (isPullback) url = `/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}`;
       else if (isCombined) url = `/api/combined-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}`;
       else url = `/api/chart-data?pair=${encodeURIComponent(pair)}&timeframe=${timeframe}&limit=${candleLimit}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
@@ -91,7 +92,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, timeframe, candleLimit, focusDate, isRsi, isPullback, isCombined, cmoLength]);
+  }, [pair, timeframe, candleLimit, focusDate, isRsi, isPullback, isCombined, cmoLength, emaLength]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch("/api/positions");
@@ -155,7 +156,8 @@ export default function Home() {
   async function runBacktest() {
     setBacktestLoading(true);
     try {
-      const cmoParam = isPullback || isCombined ? `&cmoLength=${cmoLength}` : "";
+      const emaParam = isPullback ? `&emaLength=${emaLength}` : "";
+      const cmoParam = (isPullback || isCombined ? `&cmoLength=${cmoLength}` : "") + emaParam;
       const res = await fetch(
         `/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}&strategy=${strategy}${cmoParam}`
       );
@@ -208,7 +210,7 @@ export default function Home() {
         )}
         {isPullback && (
           <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
-            EMA 50/200 + CMO {cmoLength}, all on 1H · long only. Entry needs EMA 50 &gt; EMA 200 and CMO
+            EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. Entry needs price above the EMA and CMO
             sitting between −100 and −30 while jumping at least 10 points versus the previous candle
             (last condition checked). Timeframe is fixed for this strategy.
           </div>
@@ -219,6 +221,20 @@ export default function Home() {
             its SMA / rising / under 80, and CMO(1H, length {cmoLength}) in the −100..−80 zone and rising. Very
             selective — few signals by design. Timeframe is fixed for this strategy.
           </div>
+        )}
+        {isPullback && (
+          <label className="block text-sm">
+            EMA length: <span className="text-zinc-100 font-medium">{emaLength}</span>
+            <input
+              type="range"
+              min="5"
+              max="200"
+              step="1"
+              value={emaLength}
+              onChange={(e) => setEmaLength(Number(e.target.value))}
+              className="w-full accent-emerald-500"
+            />
+          </label>
         )}
         {(isPullback || isCombined) && (
           <label className="block text-sm">
@@ -279,12 +295,14 @@ export default function Home() {
 
         <label className={`flex items-center gap-2 text-sm ${isRsi ? "opacity-40" : ""}`}>
           <input type="checkbox" checked={!isRsi && showEmaFast} disabled={isRsi} onChange={(e) => setShowEmaFast(e.target.checked)} />
-          EMA Fast {(isPullback || isCombined) && "(50)"}
+          {isPullback ? `EMA (${emaLength})` : `EMA Fast ${isCombined ? "(50)" : ""}`}
         </label>
-        <label className={`flex items-center gap-2 text-sm ${isRsi ? "opacity-40" : ""}`}>
-          <input type="checkbox" checked={!isRsi && showEmaSlow} disabled={isRsi} onChange={(e) => setShowEmaSlow(e.target.checked)} />
-          EMA Slow {(isPullback || isCombined) && "(200)"}
-        </label>
+        {!isPullback && (
+          <label className={`flex items-center gap-2 text-sm ${isRsi ? "opacity-40" : ""}`}>
+            <input type="checkbox" checked={!isRsi && showEmaSlow} disabled={isRsi} onChange={(e) => setShowEmaSlow(e.target.checked)} />
+            EMA Slow {isCombined && "(200)"}
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={showBuySignals} onChange={(e) => setShowBuySignals(e.target.checked)} />
           Buy Signals
@@ -389,8 +407,7 @@ export default function Home() {
             )}
             {isPullback && (
               <>
-                <Metric label="EMA Fast" value={last.emaFast ? `$${last.emaFast.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="50-period" />
-                <Metric label="EMA Slow" value={last.emaSlow ? `$${last.emaSlow.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub="200-period" />
+                <Metric label="EMA" value={last.ema ? `$${last.ema.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub={`${emaLength}-period`} />
                 <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= -100 && last.cmo <= -30 ? "text-amber-400" : "text-zinc-100"} />
               </>
             )}
@@ -453,7 +470,7 @@ export default function Home() {
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              <Check label="EMA 50 > EMA 200" ok={last.checks.emaBullish} detail={`${last.emaFast?.toFixed(0) ?? "—"} vs ${last.emaSlow?.toFixed(0) ?? "—"}`} />
+              <Check label={`Price > EMA ${emaLength}`} ok={last.checks.priceAboveEma} detail={`${last.close?.toFixed(0) ?? "—"} vs ${last.ema?.toFixed(0) ?? "—"}`} />
               <Check label="CMO −100..−30, +10 rise" ok={last.checks.cmoZoneRise} detail={last.cmo?.toFixed(1) ?? "—"} />
             </div>
             <p className="text-xs text-zinc-500 mt-2">
@@ -515,7 +532,7 @@ export default function Home() {
             <Chart
               candles={candles}
               showEmaFast={!isRsi && showEmaFast}
-              showEmaSlow={!isRsi && showEmaSlow}
+              showEmaSlow={!isRsi && !isPullback && showEmaSlow}
               showBuySignals={showBuySignals}
               showSellSignals={showSellSignals}
               showVolume={showVolume}
