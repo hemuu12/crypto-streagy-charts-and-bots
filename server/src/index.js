@@ -9,8 +9,12 @@ import apiRouter from "./routes/api.js";
 async function main() {
   await connectDb();
 
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
+    : true;
+
   const app = express();
-  app.use(cors());
+  app.use(cors({ origin: allowedOrigins }));
   app.use(express.json());
   app.use("/api", apiRouter);
   app.get("/health", (req, res) => res.json({ ok: true }));
