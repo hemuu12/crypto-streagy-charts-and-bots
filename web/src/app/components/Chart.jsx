@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showSellSignals, showVolume, showRsi = false, showChande = false, showEntryPriceLines = false, pair, timeframe }) {
+export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, showEntryPriceLines = false, pair, timeframe }) {
   const containerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
@@ -60,36 +60,19 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
-    // RSI and ChandeMO live on their own overlay scales so they can share the
-    // candle pane without being flattened by the price axis.
-    const rsiSeries = chart.addSeries(LineSeries, {
-      color: "#a78bfa",
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      priceScaleId: "rsi",
-      title: "RSI 14 (4H)",
-    });
-    rsiSeries.priceScale().applyOptions({ scaleMargins: { top: 0.05, bottom: 0.55 } });
-
-    const rsiSmaSeries = chart.addSeries(LineSeries, {
-      color: "#64748b",
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      priceScaleId: "rsi",
-      title: "RSI SMA",
-    });
-
+    // ChandeMO lives on its own overlay scale so it can share the candle
+    // pane without being flattened by the price axis. Kept semi-transparent
+    // and confined near the bottom so it reads as a background indicator
+    // rather than competing visually with the candles.
     const chandeSeries = chart.addSeries(LineSeries, {
-      color: "#f39c12",
-      lineWidth: 2,
+      color: "rgba(243, 156, 18, 0.45)",
+      lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
       priceScaleId: "chande",
       title: "ChandeMO 4 (1H)",
     });
-    chandeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.6, bottom: 0.02 } });
+    chandeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0.02 } });
 
     seriesRef.current = {
       candleSeries,
@@ -97,8 +80,6 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       emaFastSeries,
       emaSlowSeries,
       volumeSeries,
-      rsiSeries,
-      rsiSmaSeries,
       chandeSeries,
     };
 
@@ -147,11 +128,23 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       emaFastSeries,
       emaSlowSeries,
       volumeSeries,
-      rsiSeries,
-      rsiSmaSeries,
       chandeSeries,
     } = seriesRef.current;
-    if (!candleSeries || !candles.length) return;
+    if (!candleSeries) return;
+
+    if (!candles.length) {
+      candleSeries.setData([]);
+      markers.setMarkers([]);
+      emaFastSeries.setData([]);
+      emaSlowSeries.setData([]);
+      volumeSeries.setData([]);
+      chandeSeries.setData([]);
+      for (const priceLine of entryPriceLinesRef.current) {
+        candleSeries.removePriceLine(priceLine);
+      }
+      entryPriceLinesRef.current = [];
+      return;
+    }
 
     candleSeries.setData(
       candles.map((c) => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close }))
@@ -161,8 +154,6 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     for (const c of candles) {
       if (showBuySignals && c.signal === 1) {
         m.push({ time: Math.floor(c.time / 1000), position: "belowBar", color: "#2ecc71", shape: "arrowUp", text: "BUY" });
-      } else if (showSellSignals && c.signal === -1) {
-        m.push({ time: Math.floor(c.time / 1000), position: "aboveBar", color: "#e74c3c", shape: "arrowDown", text: "SELL" });
       }
     }
     markers.setMarkers(m);
@@ -216,20 +207,18 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     const line = (key) =>
       candles.filter((c) => c[key] != null).map((c) => ({ time: Math.floor(c.time / 1000), value: c[key] }));
 
-    rsiSeries.applyOptions({ visible: showRsi });
-    rsiSmaSeries.applyOptions({ visible: showRsi });
     chandeSeries.applyOptions({ visible: showChande });
 
-    if (showRsi) {
-      rsiSeries.setData(line("rsi"));
-      rsiSmaSeries.setData(line("rsiSma"));
-    }
     if (showChande) {
-      chandeSeries.setData(line("chande"));
+      chandeSeries.setData(line("cmo"));
     }
 
+    // A manual zoom/pan on the price axis disables its autoScale; force it
+    // back on whenever fresh data lands (e.g. switching pairs) so the chart
+    // doesn't stay frozen on a stale price range.
+    candleSeries.priceScale().applyOptions({ autoScale: true });
     chartRef.current?.timeScale().fitContent();
-  }, [candles, showEmaFast, showEmaSlow, showBuySignals, showSellSignals, showVolume, showRsi, showChande, showEntryPriceLines]);
+  }, [candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande, showEntryPriceLines]);
 
   return <div ref={containerRef} className="w-full" />;
 }

@@ -1,14 +1,15 @@
-import { fetchHistorical } from "./data.js";
+import { fetchHistorical } from "./exchange.js";
 import { generatePullbackSignals } from "./strategy-pullback.js";
-import { saveBacktestRun } from "./history.js";
+import { saveBacktestRun } from "./store.js";
 import {
   PULLBACK_TIMEFRAME,
   INITIAL_CAPITAL,
-  STOP_LOSS_PCT,
-  TAKE_PROFIT_PCT,
   RISK_PER_TRADE,
   PULLBACK_CMO_LENGTH,
   PULLBACK_EMA_LENGTH,
+  PULLBACK_CMO_ZONE_LOW,
+  PULLBACK_CMO_ZONE_HIGH,
+  PULLBACK_COOLDOWN_BARS,
 } from "./config.js";
 
 function round(value, decimals) {
@@ -18,30 +19,57 @@ function round(value, decimals) {
 }
 
 function snapshot(c) {
-  return {
-    ema: round(c.ema, 2),
-    cmo: round(c.cmo, 2),
-  };
+  return { ema: round(c.ema, 2), cmo: round(c.cmo, 2) };
 }
 
-export async function runPullbackBacktest(symbol, start, end, cmoLength = PULLBACK_CMO_LENGTH, emaLength = PULLBACK_EMA_LENGTH) {
-  const raw = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
+export async function runPullbackBacktest(symbol, start, end, options = {}) {
+  const {
+    cmoLength = PULLBACK_CMO_LENGTH,
+    emaLength = PULLBACK_EMA_LENGTH,
+    zoneLow = PULLBACK_CMO_ZONE_LOW,
+    zoneHigh = PULLBACK_CMO_ZONE_HIGH,
+    zones,
+    cooldownBars = PULLBACK_COOLDOWN_BARS,
+    riskPerTrade = RISK_PER_TRADE,
+    initialCapital = INITIAL_CAPITAL,
+  } = options;
+
+  const { candles: raw, source } = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
   const evaluated = generatePullbackSignals(raw, {
-    stopLossPct: STOP_LOSS_PCT,
-    takeProfitPct: TAKE_PROFIT_PCT,
     cmoLength,
     emaLength,
+    zoneLow,
+    zoneHigh,
+    zones,
+    cooldownBars,
   });
 
-  let capital = INITIAL_CAPITAL;
+  let capital = initialCapital;
   const trades = [];
   let open = null;
 
+  // No exit conditions exist — each BUY supersedes the prior position, which
+  // is mark-to-market closed at that same bar so PnL stays attributable.
   for (let i = 0; i < evaluated.length; i++) {
     const c = evaluated[i];
 
     if (c.signal === 1) {
-      const qty = (capital * RISK_PER_TRADE) / c.close;
+      if (open) {
+        const pnl = (c.close - open.price) * open.qty;
+        capital += open.qty * c.close;
+        trades.push({
+          type: "SELL",
+          date: new Date(c.time).toISOString(),
+          price: c.close,
+          qty: open.qty,
+          pnl,
+          reason: "re_entry",
+          barsHeld: i - open.index,
+          ...snapshot(c),
+        });
+      }
+
+      const qty = (capital * riskPerTrade) / c.close;
       capital -= qty * c.close;
       open = { price: c.close, qty, index: i };
       trades.push({
@@ -49,28 +77,13 @@ export async function runPullbackBacktest(symbol, start, end, cmoLength = PULLBA
         date: new Date(c.time).toISOString(),
         price: c.close,
         qty,
-        stopLoss: c.stopLoss,
-        takeProfit: c.takeProfit,
         reason: "cmo_ema_pullback",
         ...snapshot(c),
       });
-    } else if (c.signal === -1 && open) {
-      const pnl = (c.close - open.price) * open.qty;
-      capital += open.qty * c.close;
-      trades.push({
-        type: "SELL",
-        date: new Date(c.time).toISOString(),
-        price: c.close,
-        qty: open.qty,
-        pnl,
-        reason: c.reason,
-        barsHeld: i - open.index,
-        ...snapshot(c),
-      });
-      open = null;
     }
   }
 
+  // Final open position is marked-to-market at the last candle for reporting.
   if (open) {
     const last = evaluated[evaluated.length - 1];
     const pnl = (last.close - open.price) * open.qty;
@@ -98,10 +111,16 @@ export async function runPullbackBacktest(symbol, start, end, cmoLength = PULLBA
     end,
     cmoLength,
     emaLength,
-    initialCapital: INITIAL_CAPITAL,
+    zoneLow,
+    zoneHigh,
+    zones,
+    cooldownBars,
+    riskPerTrade,
+    source,
+    initialCapital,
     finalCapital: round(capital, 2),
     totalPnl: round(totalPnl, 2),
-    returnPct: round(((capital - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100, 2),
+    returnPct: round(((capital - initialCapital) / initialCapital) * 100, 2),
     totalTrades: sells.length,
     wins: wins.length,
     losses: sells.length - wins.length,
