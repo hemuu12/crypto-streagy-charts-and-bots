@@ -3,8 +3,8 @@ import ccxt from "ccxt";
 
 const POLL_MS = 5000;
 
-function makeBybit() {
-  return new ccxt.bybit({ enableRateLimit: true, options: { defaultType: "spot" } });
+function makeBinance() {
+  return new ccxt.binance({ enableRateLimit: true, options: { defaultType: "spot" } });
 }
 
 // Polls REST tickers on an interval rather than using true exchange
@@ -25,8 +25,8 @@ export function attachStream(server) {
 
   async function pollPair(pair) {
     try {
-      const ticker = await makeBybit().fetchTicker(pair);
-      broadcast(pair, { type: "ticker", pair, price: ticker.last, time: Date.now(), source: "bybit" });
+      const ticker = await makeBinance().fetchTicker(pair);
+      broadcast(pair, { type: "ticker", pair, price: ticker.last, time: Date.now(), source: "binance" });
     } catch (e) {
       broadcast(pair, { type: "error", pair, message: e.message });
     }

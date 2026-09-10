@@ -5,8 +5,8 @@ const LIVE_TTL_MS = 10_000;
 const HISTORICAL_TTL_MS = 60 * 60_000;
 const TICKER_TTL_MS = 3_000;
 
-function makeBybit() {
-  return new ccxt.bybit({ enableRateLimit: true, options: { defaultType: "spot" } });
+function makeBinance() {
+  return new ccxt.binance({ enableRateLimit: true, options: { defaultType: "spot" } });
 }
 
 function toCandles(raw) {
@@ -16,8 +16,8 @@ function toCandles(raw) {
 export async function fetchOHLCV(symbol, timeframe, limit) {
   const key = `ohlcv:${symbol}:${timeframe}:${limit}`;
   return cached(key, LIVE_TTL_MS, async () => {
-    const raw = await makeBybit().fetchOHLCV(symbol, timeframe, undefined, limit);
-    return { candles: toCandles(raw), source: "bybit" };
+    const raw = await makeBinance().fetchOHLCV(symbol, timeframe, undefined, limit);
+    return { candles: toCandles(raw), source: "binance" };
   });
 }
 
@@ -27,7 +27,7 @@ export async function fetchHistorical(symbol, start, end, timeframe) {
     const since = new Date(start + "T00:00:00Z").getTime();
     const endTs = new Date(end + "T00:00:00Z").getTime();
 
-    const exchange = makeBybit();
+    const exchange = makeBinance();
     let cursor = since;
     let all = [];
     while (cursor < endTs) {
@@ -43,14 +43,14 @@ export async function fetchHistorical(symbol, start, end, timeframe) {
       return true;
     });
 
-    return { candles: toCandles(deduped).filter((c) => c.time <= endTs), source: "bybit" };
+    return { candles: toCandles(deduped).filter((c) => c.time <= endTs), source: "binance" };
   });
 }
 
 export async function fetchTicker(symbol) {
   const key = `ticker:${symbol}`;
   return cached(key, TICKER_TTL_MS, async () => {
-    const ticker = await makeBybit().fetchTicker(symbol);
-    return { last: ticker.last, source: "bybit" };
+    const ticker = await makeBinance().fetchTicker(symbol);
+    return { last: ticker.last, source: "binance" };
   });
 }
