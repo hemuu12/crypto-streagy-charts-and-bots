@@ -5,6 +5,38 @@ import Chart from "./components/Chart.jsx";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
 
+// Number/date formatting is pinned to a fixed locale and time zone. The bare
+// `toLocaleString()` default follows the ambient locale, which differs between
+// the Node server and the browser (e.g. "10.000" vs "10,000") and breaks
+// hydration.
+const LOCALE = "en-US";
+const TIME_ZONE = "UTC";
+
+function money(value, digits = 2) {
+  if (value == null || Number.isNaN(value)) return "-";
+  return value.toLocaleString(LOCALE, { maximumFractionDigits: digits });
+}
+
+function formatDate(value) {
+  return new Date(value).toLocaleDateString(LOCALE, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: TIME_ZONE,
+  });
+}
+
+function formatDateTime(value) {
+  return new Date(value).toLocaleString(LOCALE, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: TIME_ZONE,
+  });
+}
+
 const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "AVAX/USDT", "XRP/USDT", "ADA/USDT"];
 
 // Rolling 40-point-wide CMO zones, sliding from the extreme (-100..-60) up to
@@ -281,7 +313,7 @@ export default function Home() {
         </label>
 
         <label className="block text-sm">
-          Initial capital: <span className="text-zinc-100 font-medium">${initialCapital.toLocaleString()}</span>
+          Initial capital: <span className="text-zinc-100 font-medium">${money(initialCapital, 0)}</span>
           <input
             type="range"
             min="1000"
@@ -397,15 +429,15 @@ export default function Home() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <Metric
               label="Price"
-              value={`$${last.close.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+              value={`$${money(last.close)}`}
               delta={`${priceChangePct >= 0 ? "+" : ""}${priceChangePct.toFixed(2)}%`}
               deltaPositive={priceChangePct >= 0}
               accent
             />
-            <Metric label="EMA" value={last.ema ? `$${last.ema.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-"} sub={`${emaLength}-period`} />
+            <Metric label="EMA" value={last.ema ? `$${money(last.ema)}` : "-"} sub={`${emaLength}-period`} />
             <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= zoneLow && last.cmo <= zoneHigh ? "text-amber-400" : "text-zinc-100"} />
-            <Metric label="24h High" value={`$${last.high.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} valueColor="text-green-400/90" />
-            <Metric label="24h Low" value={`$${last.low.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} valueColor="text-red-400/90" />
+            <Metric label="24h High" value={`$${money(last.high)}`} valueColor="text-green-400/90" />
+            <Metric label="24h Low" value={`$${money(last.low)}`} valueColor="text-red-400/90" />
           </div>
         )}
 
@@ -434,7 +466,7 @@ export default function Home() {
               <>
                 Viewing trade context ·{" "}
                 <span className="text-zinc-400 font-normal">
-                  {new Date(focusDate).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                  {formatDate(focusDate)}
                 </span>
               </>
             ) : (
@@ -514,10 +546,10 @@ export default function Home() {
                   {Object.entries(positions).map(([symbol, p]) => (
                     <tr key={symbol} className="border-b border-[#1e2130] hover:bg-[#1a1e29]">
                       <td className="py-2 pr-4 font-medium">{symbol}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">${p.entry.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">${money(p.entry)}</td>
                       <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{p.qty}</td>
                       <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
-                        {new Date(p.time).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {formatDateTime(p.time)}
                       </td>
                     </tr>
                   ))}
@@ -534,13 +566,13 @@ export default function Home() {
           {backtest && (
             <div className="space-y-2">
               <div className="text-xs text-zinc-400">
-                {backtest.symbol} · {new Date(backtest.start).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                {backtest.symbol} · {formatDate(backtest.start)}
                 {" → "}
-                {new Date(backtest.end).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                {formatDate(backtest.end)}
               </div>
               <div className="grid grid-cols-6 gap-2">
-                <Metric label="Initial" value={`$${backtest.initialCapital.toLocaleString()}`} />
-                <Metric label="Final" value={`$${backtest.finalCapital.toLocaleString()}`} />
+                <Metric label="Initial" value={`$${money(backtest.initialCapital, 0)}`} />
+                <Metric label="Final" value={`$${money(backtest.finalCapital, 0)}`} />
                 <Metric label="Return" value={`${backtest.returnPct}%`} />
                 <Metric label="Win Rate" value={`${backtest.winRate}%`} />
                 <Metric label="Total Trades" value={backtest.totalTrades} />
@@ -597,7 +629,7 @@ export default function Home() {
                           className={`border-b border-[#1e2130] cursor-pointer hover:bg-[#1a1e29] ${isSelected ? "bg-blue-900/20 ring-1 ring-inset ring-blue-500/40" : ""}`}
                         >
                           <td className="py-2 pr-4 text-zinc-300 whitespace-nowrap">
-                            {new Date(t.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                            {formatDate(t.date)}
                           </td>
                           <td className="py-2 pr-4">
                             <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${isBuy ? "bg-green-900/40 text-green-400" : "bg-red-900/40 text-red-400"}`}>
@@ -605,11 +637,11 @@ export default function Home() {
                             </span>
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums">
-                            ${t.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            ${money(t.price)}
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.qty.toFixed(6)}</td>
                           <td className="py-2 pr-4 text-right tabular-nums text-amber-400/80">
-                            {t.ema != null ? `$${t.ema.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "—"}
+                            {t.ema != null ? `$${money(t.ema)}` : "—"}
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums text-amber-400/90">{t.cmo ?? "—"}</td>
                           <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.barsHeld ?? "—"}</td>
@@ -656,7 +688,7 @@ export default function Home() {
                       className="border-b border-[#1e2130] cursor-pointer hover:bg-[#1a1e29]"
                     >
                       <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
-                        {new Date(run.runAt).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {formatDateTime(run.runAt)}
                       </td>
                       <td className="py-2 pr-4 text-zinc-400">{run.strategy || "ema"}</td>
                       <td className="py-2 pr-4 font-medium">{run.symbol}</td>
@@ -747,7 +779,7 @@ function LogRow({ line }) {
           <td className="py-1.5 px-3 font-medium whitespace-nowrap">{parsed.pair}</td>
           <td className={`py-1.5 px-3 whitespace-nowrap ${trendColor}`}>{parsed.trend === "bullish" ? "▲ Bullish" : "▼ Bearish"}</td>
           <td className={`py-1.5 px-3 font-medium whitespace-nowrap ${signalColor}`}>{signalLabel}</td>
-          <td className="py-1.5 px-3 text-right tabular-nums whitespace-nowrap">${parsed.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+          <td className="py-1.5 px-3 text-right tabular-nums whitespace-nowrap">${money(parsed.price)}</td>
         </>
       )}
       {parsed.type === "trade" && (

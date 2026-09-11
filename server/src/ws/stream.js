@@ -1,11 +1,7 @@
 import { WebSocketServer } from "ws";
-import ccxt from "ccxt";
+import { fetchTicker } from "../lib/exchange.js";
 
 const POLL_MS = 5000;
-
-function makeOkx() {
-  return new ccxt.okx({ enableRateLimit: true, options: { defaultType: "spot" } });
-}
 
 // Polls REST tickers on an interval rather than using true exchange
 // WebSockets — ccxt.pro (needed for watchTicker) is a paid add-on, so this
@@ -25,8 +21,8 @@ export function attachStream(server) {
 
   async function pollPair(pair) {
     try {
-      const ticker = await makeOkx().fetchTicker(pair);
-      broadcast(pair, { type: "ticker", pair, price: ticker.last, time: Date.now(), source: "okx" });
+      const { last, source } = await fetchTicker(pair);
+      broadcast(pair, { type: "ticker", pair, price: last, time: Date.now(), source });
     } catch (e) {
       broadcast(pair, { type: "error", pair, message: e.message });
     }

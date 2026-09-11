@@ -176,7 +176,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
               lineWidth: 1,
               lineStyle: 2,
               axisLabelVisible: true,
-              title: `BUY $${c.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
+              title: `BUY $${c.entryPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}`,
             })
           );
         }
