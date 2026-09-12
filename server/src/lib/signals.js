@@ -55,6 +55,21 @@ export async function getPullbackSignals({
     cooldownBars,
   });
 
-  const trimmed = around ? evaluated : evaluated.slice(-limit);
+  let trimmed;
+  if (around) {
+    // The fetch above pads extra lead-in candles before the window so the
+    // EMA/CMO are warmed up by the time we reach it — slice those back off
+    // here so the returned window is actually centered on `around`, not
+    // shifted earlier by however many lead bars were fetched.
+    const center = new Date(around).getTime();
+    let centerIndex = evaluated.findIndex((c) => c.time >= center);
+    if (centerIndex === -1) centerIndex = evaluated.length - 1;
+    const half = Math.floor(limit / 2);
+    const start = Math.max(0, centerIndex - half);
+    trimmed = evaluated.slice(start, start + limit);
+  } else {
+    trimmed = evaluated.slice(-limit);
+  }
+
   return { candles: trimmed, source };
 }
