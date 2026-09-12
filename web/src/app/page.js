@@ -88,8 +88,11 @@ export default function Home() {
   const [zoneHigh, setZoneHigh] = useState(-30);
   const [selectedZones, setSelectedZones] = useState([]);
   const [cooldownBars, setCooldownBars] = useState(0);
-  const [riskPerTrade, setRiskPerTrade] = useState(0.02);
-  const [stopLossPct, setStopLossPct] = useState(0.02);
+  // Fixed, not user-adjustable. The stop defines 1R and position size is
+  // derived from it, so both stay constant across the 1:1/1:2/1:3 comparison
+  // — only the target moves. Server defaults match these values.
+  const riskPerTrade = 0.02;
+  const stopLossPct = 0.02;
   const [riskRewardRatio, setRiskRewardRatio] = useState(2);
   const [initialCapital, setInitialCapital] = useState(10000);
 
@@ -110,6 +113,15 @@ export default function Home() {
   const [livePrice, setLivePrice] = useState(null);
   const [liveStatus, setLiveStatus] = useState("connecting");
   const wsRef = useRef(null);
+
+  // Ticks every second so the "next candle" countdown stays live without
+  // needing a server round-trip — the close time is derived from the last
+  // candle's own timestamp, this just re-renders the remaining time.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const [positions, setPositions] = useState({});
   const [backtest, setBacktest] = useState(null);
@@ -164,6 +176,26 @@ export default function Home() {
     loadChart();
   }, [loadChart]);
 
+  // Once the current hour's candle closes, refetch so it lands as real closed
+  // data (with EMA/CMO/signal computed) instead of leaving the chart frozen
+  // on the live-ticker-built forming candle past its actual close time.
+  //
+  // A single refetch attempt isn't reliable here: the server caches OHLCV
+  // responses for a few seconds, so a refetch that lands just after the hour
+  // rolls over can still be served the pre-rollover cached data — same
+  // `last.time` as before, no-op. Retrying on a short interval (rather than
+  // a one-shot flag keyed on `last.time`) means a stale-cache miss corrects
+  // itself on the next attempt instead of getting stuck permanently.
+  useEffect(() => {
+    const last = candles[candles.length - 1];
+    if (!last || focusDate) return;
+    const closeTime = last.time + 60 * 60 * 1000;
+    if (now < closeTime) return;
+
+    const id = setInterval(loadChart, 4000);
+    return () => clearInterval(id);
+  }, [candles, focusDate, loadChart, now]);
+
   useEffect(() => {
     loadPositions();
     loadLog();
@@ -210,7 +242,14 @@ export default function Home() {
         }
       };
 
-      ws.onerror = () => setLiveStatus("offline");
+      // Guarded like onclose below: closing a socket that's still CONNECTING
+      // (e.g. React Strict Mode's mount→cleanup→mount in dev) fires onerror
+      // on that stale socket. Without this check, a stale error can stomp the
+      // status set by the connection that replaced it.
+      ws.onerror = () => {
+        if (closed) return;
+        setLiveStatus("offline");
+      };
 
       ws.onclose = () => {
         if (closed) return;
@@ -225,10 +264,19 @@ export default function Home() {
       closed = true;
       clearTimeout(retry);
       const ws = wsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "unsubscribe", pair }));
-        ws.close();
-      } else if (ws) {
+      if (ws) {
+        // Belt-and-braces on top of the `closed` guards in each handler above:
+        // detach them so a socket that's still connecting/closing when this
+        // effect is torn down (e.g. React Strict Mode's dev-only extra
+        // mount/cleanup pass, or a fast pair switch) can't affect state after
+        // the fact, no matter what order its events fire in.
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "unsubscribe", pair }));
+        }
         ws.close();
       }
       wsRef.current = null;
@@ -317,6 +365,22 @@ export default function Home() {
   // how far the market has moved since that bar finished.
   const livePrice_ = livePrice?.price ?? null;
   const liveChangePct = livePrice_ != null && last ? ((livePrice_ - last.close) / last.close) * 100 : null;
+
+  // Countdown to when the current forming 1H candle closes and the next one
+  // starts. `last.time` is the OPEN time of the last CLOSED bar, so the next
+  // close is exactly one bar later.
+  const HOUR_MS = 60 * 60 * 1000;
+  let nextCandleLabel = null;
+  if (last) {
+    const msLeft = last.time + HOUR_MS * 2 - now;
+    if (msLeft > 0) {
+      const mins = Math.floor(msLeft / 60000);
+      const secs = Math.floor((msLeft % 60000) / 1000);
+      nextCandleLabel = `${mins}:${String(secs).padStart(2, "0")}`;
+    } else {
+      nextCandleLabel = "any moment";
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-[#131722] text-[#d1d4dc]">
@@ -422,37 +486,6 @@ export default function Home() {
         </label>
 
         <label className="block text-sm">
-          Risk per trade: <span className="text-zinc-100 font-medium">{(riskPerTrade * 100).toFixed(1)}%</span>
-          <input
-            type="range"
-            min="0.005"
-            max="0.2"
-            step="0.005"
-            value={riskPerTrade}
-            onChange={(e) => setRiskPerTrade(Number(e.target.value))}
-            className="w-full accent-emerald-500"
-          />
-        </label>
-
-        <label className="block text-sm">
-          Stop loss: <span className="text-zinc-100 font-medium">{(stopLossPct * 100).toFixed(1)}%</span>
-          <input
-            type="range"
-            min="0.005"
-            max="0.1"
-            step="0.005"
-            value={stopLossPct}
-            onChange={(e) => setStopLossPct(Number(e.target.value))}
-            className="w-full accent-emerald-500"
-          />
-          {stopLossPct < riskPerTrade && (
-            <span className="block text-[11px] text-amber-400/90 mt-1">
-              Stop is tighter than risk per trade — positions become unaffordable and no trades open.
-            </span>
-          )}
-        </label>
-
-        <label className="block text-sm">
           Risk : Reward <span className="text-zinc-100 font-medium">1:{riskRewardRatio}</span>
           <span className="block text-[11px] text-zinc-500">All three run on every backtest</span>
           <div className="mt-1 flex gap-1">
@@ -522,10 +555,12 @@ export default function Home() {
           <input type="checkbox" checked={showEmaFast} onChange={(e) => setShowEmaFast(e.target.checked)} />
           {`EMA (${emaLength})`}
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showBuySignals} onChange={(e) => setShowBuySignals(e.target.checked)} />
-          Buy Signals
-        </label>
+        {selectedZones.length > 0 && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showBuySignals} onChange={(e) => setShowBuySignals(e.target.checked)} />
+            Buy Signals
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={showVolume} onChange={(e) => setShowVolume(e.target.checked)} />
           Volume
@@ -542,12 +577,18 @@ export default function Home() {
           Paper Trading
         </label>
 
-        <button
-          onClick={runBotOnce}
-          className="w-full bg-blue-600 hover:bg-blue-700 rounded py-2 text-sm font-medium"
-        >
-          Run Bot Once
-        </button>
+        {selectedZones.length > 0 ? (
+          <button
+            onClick={runBotOnce}
+            className="w-full bg-blue-600 hover:bg-blue-700 rounded py-2 text-sm font-medium"
+          >
+            Run Bot Once
+          </button>
+        ) : (
+          <div className="text-xs text-zinc-500 text-center py-1.5">
+            Select a CMO zone preset to enable
+          </div>
+        )}
         <hr className="border-[#2a2d3e]" />
 
         <label className="block text-sm">
@@ -624,7 +665,11 @@ export default function Home() {
             <Metric
               label="Last Close"
               value={`$${money(last.close)}`}
-              sub={`1H bar · ${formatTime(last.time)}`}
+              sub={
+                nextCandleLabel
+                  ? `${formatTime(last.time)} · next in ${nextCandleLabel}`
+                  : `1H bar · ${formatTime(last.time)}`
+              }
             />
             <Metric label="EMA" value={last.ema ? `$${money(last.ema)}` : "-"} sub={`${emaLength}-period`} />
             <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= zoneLow && last.cmo <= zoneHigh ? "text-amber-400" : "text-zinc-100"} />
@@ -681,11 +726,16 @@ export default function Home() {
               candles={candles}
               showEmaFast={showEmaFast}
               showEmaSlow={false}
-              showBuySignals={showBuySignals}
+              showBuySignals={showBuySignals && selectedZones.length > 0}
               showVolume={showVolume}
               showChande={showChande}
               pair={pair}
               timeframe="1h"
+              // Only draw the live forming candle in the live/latest view —
+              // when viewing a past trade's window (`focusDate` set), the
+              // chart shows a fixed slice of history and shouldn't move.
+              livePrice={focusDate ? null : livePrice_}
+              now={now}
             />
           )}
           {loading && (

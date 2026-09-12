@@ -41,7 +41,13 @@ export async function getPullbackSignals({
       const now = Date.now();
       const startDay = new Date(now - HOUR_MS * totalBars).toISOString().slice(0, 10);
       const endDay = new Date(now).toISOString().slice(0, 10);
-      ({ candles: raw, source } = await fetchHistorical(pair, startDay, endDay, PULLBACK_TIMEFRAME));
+      // End at the current instant, not `endDay`'s midnight — otherwise this
+      // live view silently drops every candle since 00:00 UTC. Short TTL for
+      // the same reason: this range's end moves with the clock.
+      ({ candles: raw, source } = await fetchHistorical(pair, startDay, endDay, PULLBACK_TIMEFRAME, {
+        endTs: now,
+        ttlMs: 10_000,
+      }));
     }
   }
 

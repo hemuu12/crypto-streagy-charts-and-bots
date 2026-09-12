@@ -3,7 +3,9 @@ import { cached } from "./cache.js";
 
 const LIVE_TTL_MS = 10_000;
 const HISTORICAL_TTL_MS = 60 * 60_000;
-const TICKER_TTL_MS = 3_000;
+// Must stay <= POLL_MS in ws/stream.js — otherwise the stream's faster polls
+// just re-read this same cached value instead of fetching a fresh price.
+const TICKER_TTL_MS = 1_000;
 
 // Exchange choice is env-driven because some venues (okx, binance) are
 // unreachable from certain networks/regions. EXCHANGE picks the preferred
@@ -58,11 +60,19 @@ export async function fetchOHLCV(symbol, timeframe, limit) {
   });
 }
 
-export async function fetchHistorical(symbol, start, end, timeframe) {
-  const key = `historical:${symbol}:${timeframe}:${start}:${end}`;
-  return cached(key, HISTORICAL_TTL_MS, async () => {
+// `end` is a YYYY-MM-DD day, which resolves to that day's MIDNIGHT — so a
+// range ending "today" would stop at 00:00 and drop every candle since. Pass
+// `opts.endTs` (epoch ms) to end at an exact instant instead; the live chart
+// uses that with `Date.now()` so it reaches the current bar. `opts.ttlMs`
+// likewise overrides the hour-long cache, which is far too long for a range
+// whose end keeps moving.
+export async function fetchHistorical(symbol, start, end, timeframe, opts = {}) {
+  const endTsOverride = opts.endTs;
+  const ttlMs = opts.ttlMs ?? HISTORICAL_TTL_MS;
+  const key = `historical:${symbol}:${timeframe}:${start}:${endTsOverride ?? end}`;
+  return cached(key, ttlMs, async () => {
     const since = new Date(start + "T00:00:00Z").getTime();
-    const endTs = new Date(end + "T00:00:00Z").getTime();
+    const endTs = endTsOverride ?? new Date(end + "T00:00:00Z").getTime();
 
     const { value: all, source } = await withExchange(async (exchange) => {
       let cursor = since;

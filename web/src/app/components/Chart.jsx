@@ -7,7 +7,9 @@ function money(value) {
   return value == null ? "—" : `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
 }
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, pair, timeframe }) {
+const HOUR_MS = 60 * 60 * 1000;
+
+export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, pair, timeframe, livePrice, now }) {
   const containerRef = useRef(null);
   const tooltipRef = useRef(null);
   const chartRef = useRef(null);
@@ -17,6 +19,11 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
   // away from the most recent candles, mirroring how TradingView-style
   // charts surface it only when it's actually useful.
   const [scrolledAway, setScrolledAway] = useState(false);
+  // The last CLOSED candle from `candles`, and the live forming candle built
+  // on top of it from ticker updates — tracked in refs (not state) since
+  // they're pushed straight into the chart series via update(), not re-render.
+  const lastClosedRef = useRef(null);
+  const formingCandleRef = useRef(null);
 
   // Mount chart + series once
   useEffect(() => {
@@ -218,12 +225,20 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       volumeSeries.setData([]);
       chandeSeries.setData([]);
       candlesByTimeRef.current = new Map();
+      lastClosedRef.current = null;
+      formingCandleRef.current = null;
       return;
     }
 
     candleSeries.setData(
       candles.map((c) => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close }))
     );
+
+    // Track the last CLOSED candle so live ticks (below) know what price to
+    // open the next, still-forming candle from, and reset any in-progress
+    // forming candle since fresh data supersedes it.
+    lastClosedRef.current = candles[candles.length - 1];
+    formingCandleRef.current = null;
 
     // Indexed by chart time so the crosshair-move handler can look up a
     // candle's signal/entry/indicator data for the hover tooltip.
@@ -279,6 +294,48 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     candleSeries.priceScale().applyOptions({ autoScale: true });
     chartRef.current?.timeScale().fitContent();
   }, [candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande]);
+
+  // Draws/updates the currently-forming candle from live ticker prices, the
+  // way TradingView keeps the rightmost bar live instead of only showing
+  // closed bars. Uses candleSeries.update() (an incremental patch) rather
+  // than setData() so it doesn't redraw the whole series on every tick.
+  useEffect(() => {
+    const { candleSeries } = seriesRef.current;
+    const lastClosed = lastClosedRef.current;
+    if (!candleSeries || !lastClosed || livePrice == null) return;
+
+    const barTimeMs = lastClosed.time + HOUR_MS;
+
+    // Once real time has moved past this bar's own close, it's stale — a
+    // parent refetch is expected to bring it in as real closed data and reset
+    // lastClosedRef. Stop patching it here to avoid drawing the wrong hour.
+    if (now != null && now >= barTimeMs + HOUR_MS) return;
+
+    const barTimeSec = Math.floor(barTimeMs / 1000);
+
+    const prior = formingCandleRef.current;
+    const bar =
+      prior && prior.time === barTimeSec
+        ? {
+            time: barTimeSec,
+            open: prior.open,
+            high: Math.max(prior.high, livePrice),
+            low: Math.min(prior.low, livePrice),
+            close: livePrice,
+          }
+        : {
+            // New bar period started: open it at the last closed candle's
+            // close, same as the exchange would.
+            time: barTimeSec,
+            open: lastClosed.close,
+            high: Math.max(lastClosed.close, livePrice),
+            low: Math.min(lastClosed.close, livePrice),
+            close: livePrice,
+          };
+
+    formingCandleRef.current = bar;
+    candleSeries.update(bar);
+  }, [livePrice, now]);
 
   function jumpToLatest() {
     chartRef.current?.timeScale().fitContent();

@@ -1,7 +1,11 @@
 import { WebSocketServer } from "ws";
 import { fetchTicker } from "../lib/exchange.js";
 
-const POLL_MS = 5000;
+// 1.5s keeps the Live Price metric and the chart's forming candle feeling
+// live without hammering the exchange — Bybit's public market-data endpoints
+// allow far more than this per IP. Must stay >= TICKER_TTL_MS in exchange.js
+// or polls just re-read the same cached value.
+const POLL_MS = 1500;
 
 // Polls REST tickers on an interval rather than using true exchange
 // WebSockets — ccxt.pro (needed for watchTicker) is a paid add-on, so this
