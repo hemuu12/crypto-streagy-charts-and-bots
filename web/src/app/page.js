@@ -124,6 +124,10 @@ export default function Home() {
   }, []);
 
   const [positions, setPositions] = useState({});
+  // Positions and backtest history default to the selected pair only; either
+  // panel can be switched to show every pair via its own checkbox.
+  const [positionsAllPairs, setPositionsAllPairs] = useState(false);
+  const [backtestHistoryAllPairs, setBacktestHistoryAllPairs] = useState(false);
   const [backtest, setBacktest] = useState(null);
   // Every run evaluates 1:1, 1:2 and 1:3 so the ratios can be compared
   // directly; `riskRewardRatio` then only selects which one is detailed below.
@@ -771,35 +775,46 @@ export default function Home() {
         <p className="text-xs text-zinc-500">🖱 Scroll to zoom · Click & drag to pan</p>
 
         <section>
-          <h2 className="font-semibold mb-2">Open Positions</h2>
-          {Object.keys(positions).length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
-                    <th className="py-2 pr-4 font-medium">Pair</th>
-                    <th className="py-2 pr-4 font-medium text-right">Entry</th>
-                    <th className="py-2 pr-4 font-medium text-right">Qty</th>
-                    <th className="py-2 pr-4 font-medium">Opened</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(positions).map(([symbol, p]) => (
-                    <tr key={symbol} className="border-b border-[#1e2130] hover:bg-[#1a1e29]">
-                      <td className="py-2 pr-4 font-medium">{symbol}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">${money(p.entry)}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{p.qty}</td>
-                      <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
-                        {formatDateTime(p.time)}
-                      </td>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold">Open Positions</h2>
+            <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer">
+              <input type="checkbox" checked={positionsAllPairs} onChange={(e) => setPositionsAllPairs(e.target.checked)} />
+              Show all pairs
+            </label>
+          </div>
+          {(() => {
+            const entries = Object.entries(positions).filter(([symbol]) => positionsAllPairs || symbol === pair);
+            return entries.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
+                      <th className="py-2 pr-4 font-medium">Pair</th>
+                      <th className="py-2 pr-4 font-medium text-right">Entry</th>
+                      <th className="py-2 pr-4 font-medium text-right">Qty</th>
+                      <th className="py-2 pr-4 font-medium">Opened</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-sm text-zinc-400">No open positions.</div>
-          )}
+                  </thead>
+                  <tbody>
+                    {entries.map(([symbol, p]) => (
+                      <tr key={symbol} className="border-b border-[#1e2130] hover:bg-[#1a1e29]">
+                        <td className="py-2 pr-4 font-medium">{symbol}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums">${money(p.entry)}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{p.qty}</td>
+                        <td className="py-2 pr-4 text-zinc-400 whitespace-nowrap">
+                          {formatDateTime(p.time)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-sm text-zinc-400">
+                {positionsAllPairs ? "No open positions." : `No open position for ${pair}.`}
+              </div>
+            );
+          })()}
         </section>
 
         <section>
@@ -1036,8 +1051,20 @@ export default function Home() {
         </section>
 
         <section>
-          <h2 className="font-semibold mb-2">Backtest History</h2>
-          {backtestHistory.filter((run) => (run.strategy || "ema") === "pullback").length > 0 ? (
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold">Backtest History</h2>
+            <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={backtestHistoryAllPairs}
+                onChange={(e) => setBacktestHistoryAllPairs(e.target.checked)}
+              />
+              Show all pairs
+            </label>
+          </div>
+          {backtestHistory.filter(
+            (run) => (run.strategy || "ema") === "pullback" && (backtestHistoryAllPairs || run.symbol === pair)
+          ).length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -1052,7 +1079,9 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {backtestHistory.filter((run) => (run.strategy || "ema") === "pullback").map((run, i) => (
+                  {backtestHistory
+                    .filter((run) => (run.strategy || "ema") === "pullback" && (backtestHistoryAllPairs || run.symbol === pair))
+                    .map((run, i) => (
                     <tr
                       key={i}
                       onClick={() => { setBacktest(run); setTradeReasonFilter("all"); }}
