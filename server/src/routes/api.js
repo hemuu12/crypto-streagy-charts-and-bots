@@ -3,9 +3,15 @@ import { getPullbackSignals } from "../lib/signals.js";
 import { runPullbackBacktest } from "../lib/backtest.js";
 import { loadBacktestRuns, loadPositions, loadLogLines, getBacktestKpis } from "../lib/store.js";
 import { runBotOnce } from "../lib/bot.js";
-import { BACKTEST_START, BACKTEST_END } from "../lib/config.js";
+import { BACKTEST_START } from "../lib/config.js";
 
 const router = Router();
+
+// Computed per-request rather than a fixed export, so the default end date
+// never goes stale the way a hardcoded one would.
+function todayUTC() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function parseZones(raw) {
   if (!raw) return undefined;
@@ -34,6 +40,8 @@ function readStrategyParams(source) {
     cooldownBars: num(source.cooldownBars),
     riskPerTrade: num(source.riskPerTrade),
     initialCapital: num(source.initialCapital),
+    stopLossPct: num(source.stopLossPct),
+    riskRewardRatio: num(source.riskRewardRatio),
   };
 }
 
@@ -76,7 +84,7 @@ router.post("/pullback-signals/batch", async (req, res) => {
 
 router.get("/backtest", async (req, res) => {
   try {
-    const { pair = "BTC/USDT", start = BACKTEST_START, end = BACKTEST_END } = req.query;
+    const { pair = "BTC/USDT", start = BACKTEST_START, end = todayUTC() } = req.query;
     const result = await runPullbackBacktest(pair, start, end, readStrategyParams(req.query));
     res.json(result);
   } catch (e) {
@@ -86,7 +94,7 @@ router.get("/backtest", async (req, res) => {
 
 router.post("/backtest/batch", async (req, res) => {
   try {
-    const { pairs, start = BACKTEST_START, end = BACKTEST_END } = req.body;
+    const { pairs, start = BACKTEST_START, end = todayUTC() } = req.body;
     if (!Array.isArray(pairs) || !pairs.length) {
       return res.status(400).json({ error: "pairs must be a non-empty array" });
     }

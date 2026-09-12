@@ -1,13 +1,22 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from "lightweight-charts";
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, showEntryPriceLines = false, pair, timeframe }) {
+function money(value) {
+  return value == null ? "—" : `$${value.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
+export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, pair, timeframe }) {
   const containerRef = useRef(null);
+  const tooltipRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef({});
-  const entryPriceLinesRef = useRef([]);
+  const candlesByTimeRef = useRef(new Map());
+  // Shows the "jump to latest" button once the visible range has scrolled
+  // away from the most recent candles, mirroring how TradingView-style
+  // charts surface it only when it's actually useful.
+  const [scrolledAway, setScrolledAway] = useState(false);
 
   // Mount chart + series once
   useEffect(() => {
@@ -83,6 +92,75 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       chandeSeries,
     };
 
+    // Hover tooltip for BUY signal candles only: OHLC, change, volume, and
+    // indicator readings at the moment the signal fired. Hidden on every
+    // other candle so it doesn't clutter routine chart browsing.
+    chart.subscribeCrosshairMove((param) => {
+      const tooltip = tooltipRef.current;
+      if (!tooltip) return;
+
+      const c = param.time != null ? candlesByTimeRef.current.get(param.time) : null;
+      if (!param.point || !c || c.signal !== 1) {
+        tooltip.style.display = "none";
+        return;
+      }
+
+      const changePct = c.open ? ((c.close - c.open) / c.open) * 100 : 0;
+      const changeColor = changePct >= 0 ? "text-green-400" : "text-red-400";
+      const dateLabel = new Date(c.time).toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "UTC",
+      });
+
+      const row = (label, value, cls = "") =>
+        `<div class="flex justify-between gap-4"><span class="text-zinc-400">${label}</span><span class="${cls}">${value}</span></div>`;
+
+      tooltip.innerHTML = `
+        <div class="font-semibold text-zinc-200 mb-1">${dateLabel} UTC</div>
+        <div class="font-semibold text-green-400 mb-1">BUY signal</div>
+        ${row("Open", money(c.open))}
+        ${row("High", money(c.high))}
+        ${row("Low", money(c.low))}
+        ${row("Close", money(c.close), changeColor)}
+        ${row("Change", `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%`, changeColor)}
+        ${c.volume != null ? row("Volume", c.volume.toLocaleString("en-US", { maximumFractionDigits: 2 })) : ""}
+        <div class="my-1 border-t border-[#2a2d3e]"></div>
+        ${row("EMA", money(c.ema))}
+        ${row("CMO", c.cmo != null ? c.cmo.toFixed(1) : "—")}
+        ${row("Entry", money(c.entryPrice), "text-green-400")}
+      `;
+      tooltip.style.display = "block";
+
+      const container = containerRef.current;
+      const containerWidth = container?.clientWidth ?? 0;
+      const containerHeight = container?.clientHeight ?? 0;
+      const tooltipWidth = tooltip.offsetWidth || 180;
+      const tooltipHeight = tooltip.offsetHeight || 160;
+      const margin = 12;
+
+      let left = param.point.x + margin;
+      if (left + tooltipWidth > containerWidth) left = param.point.x - tooltipWidth - margin;
+
+      let top = param.point.y - 10;
+      if (top + tooltipHeight > containerHeight) top = containerHeight - tooltipHeight - margin;
+
+      tooltip.style.left = `${Math.max(0, left)}px`;
+      tooltip.style.top = `${Math.max(0, top)}px`;
+    });
+
+    // Surface the "jump to latest" button once the right edge of the visible
+    // range has scrolled past the last real bar (a manual zoom/pan away from
+    // the newest data), rather than showing it unconditionally.
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (!range) return;
+      const total = candlesByTimeRef.current.size;
+      setScrolledAway(range.to < total - 2);
+    });
+
     const handleResize = () => {
       if (containerRef.current) {
         chart.applyOptions({ width: containerRef.current.clientWidth });
@@ -96,7 +174,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       chart.remove();
       chartRef.current = null;
       seriesRef.current = {};
-      entryPriceLinesRef.current = [];
+      candlesByTimeRef.current = new Map();
     };
   }, []);
 
@@ -139,16 +217,21 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       emaSlowSeries.setData([]);
       volumeSeries.setData([]);
       chandeSeries.setData([]);
-      for (const priceLine of entryPriceLinesRef.current) {
-        candleSeries.removePriceLine(priceLine);
-      }
-      entryPriceLinesRef.current = [];
+      candlesByTimeRef.current = new Map();
       return;
     }
 
     candleSeries.setData(
       candles.map((c) => ({ time: Math.floor(c.time / 1000), open: c.open, high: c.high, low: c.low, close: c.close }))
     );
+
+    // Indexed by chart time so the crosshair-move handler can look up a
+    // candle's signal/entry/indicator data for the hover tooltip.
+    const byTime = new Map();
+    for (const c of candles) {
+      byTime.set(Math.floor(c.time / 1000), c);
+    }
+    candlesByTimeRef.current = byTime;
 
     const m = [];
     for (const c of candles) {
@@ -157,31 +240,6 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       }
     }
     markers.setMarkers(m);
-
-    // Anchor each BUY to its exact entry price with a horizontal line, rather
-    // than only marking which candle triggered it — the price level is what
-    // matters for the entry, not the time axis position.
-    for (const priceLine of entryPriceLinesRef.current) {
-      candleSeries.removePriceLine(priceLine);
-    }
-    entryPriceLinesRef.current = [];
-
-    if (showEntryPriceLines) {
-      for (const c of candles) {
-        if (c.signal === 1 && c.entryPrice != null) {
-          entryPriceLinesRef.current.push(
-            candleSeries.createPriceLine({
-              price: c.entryPrice,
-              color: "#2ecc71",
-              lineWidth: 1,
-              lineStyle: 2,
-              axisLabelVisible: true,
-              title: `BUY $${c.entryPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}`,
-            })
-          );
-        }
-      }
-    }
 
     emaFastSeries.applyOptions({ visible: showEmaFast });
     emaFastSeries.setData(
@@ -216,9 +274,34 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     // A manual zoom/pan on the price axis disables its autoScale; force it
     // back on whenever fresh data lands (e.g. switching pairs) so the chart
     // doesn't stay frozen on a stale price range.
+    // fitContent() triggers the visible-range subscription above, which
+    // clears `scrolledAway` once the range change lands.
     candleSeries.priceScale().applyOptions({ autoScale: true });
     chartRef.current?.timeScale().fitContent();
-  }, [candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande, showEntryPriceLines]);
+  }, [candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande]);
 
-  return <div ref={containerRef} className="w-full" />;
+  function jumpToLatest() {
+    chartRef.current?.timeScale().fitContent();
+  }
+
+  return (
+    <div className="relative w-full">
+      <div ref={containerRef} className="w-full" />
+      <div
+        ref={tooltipRef}
+        className="absolute hidden pointer-events-none z-10 rounded border border-[#2a2d3e] bg-[#1e222d]/95 px-2.5 py-2 text-xs text-zinc-200 shadow-lg whitespace-nowrap"
+        style={{ display: "none" }}
+      />
+      {scrolledAway && (
+        <button
+          type="button"
+          onClick={jumpToLatest}
+          title="Jump to the latest candles"
+          className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 rounded border border-[#2a2d3e] bg-[#1e222d]/95 px-3 py-1.5 text-xs font-medium text-zinc-200 shadow-lg hover:bg-[#262b3a] hover:border-zinc-600"
+        >
+          Jump to latest ↦
+        </button>
+      )}
+    </div>
+  );
 }

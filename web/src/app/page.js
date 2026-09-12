@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Chart from "./components/Chart.jsx";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:4000";
+const WS_BASE = API_BASE.replace(/^http/, "ws");
 
 // Number/date formatting is pinned to a fixed locale and time zone. The bare
 // `toLocaleString()` default follows the ambient locale, which differs between
@@ -26,6 +27,14 @@ function formatDate(value) {
   });
 }
 
+function formatTime(value) {
+  return new Date(value).toLocaleTimeString(LOCALE, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: TIME_ZONE,
+  });
+}
+
 function formatDateTime(value) {
   return new Date(value).toLocaleString(LOCALE, {
     year: "numeric",
@@ -35,6 +44,12 @@ function formatDateTime(value) {
     minute: "2-digit",
     timeZone: TIME_ZONE,
   });
+}
+
+// UTC calendar date, e.g. "2026-09-12" — used as "today" for the backtest
+// range so it never goes stale like a hardcoded default would.
+function todayUTC() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "AVAX/USDT", "XRP/USDT", "ADA/USDT"];
@@ -47,13 +62,19 @@ const ZONE_PRESETS = Array.from({ length: 81 }, (_, i) => {
   return { low, high, label: `${low} → ${high > 0 ? "+" + high : high}` };
 });
 
+const RR_RATIOS = [1, 2, 3];
+
 const REASON_STYLES = {
   cmo_ema_pullback: "bg-blue-900/40 text-blue-400",
+  take_profit: "bg-green-900/40 text-green-400",
+  stop_loss: "bg-red-900/40 text-red-400",
   end_of_data: "bg-zinc-700/40 text-zinc-400",
 };
 
 const REASON_LABELS = {
   cmo_ema_pullback: "CMO + EMA",
+  take_profit: "Target Hit",
+  stop_loss: "Stopped Out",
   end_of_data: "End of Data",
 };
 
@@ -61,13 +82,15 @@ const REASON_LABELS = {
 export default function Home() {
   const [pair, setPair] = useState("BTC/USDT");
   const [candleLimit, setCandleLimit] = useState(250);
-  const [cmoLength, setCmoLength] = useState(4);
-  const [emaLength, setEmaLength] = useState(50);
+  const [cmoLength, setCmoLength] = useState(18);
+  const [emaLength, setEmaLength] = useState(200);
   const [zoneLow, setZoneLow] = useState(-100);
   const [zoneHigh, setZoneHigh] = useState(-30);
   const [selectedZones, setSelectedZones] = useState([]);
-  const [cooldownBars, setCooldownBars] = useState(24);
+  const [cooldownBars, setCooldownBars] = useState(0);
   const [riskPerTrade, setRiskPerTrade] = useState(0.02);
+  const [stopLossPct, setStopLossPct] = useState(0.02);
+  const [riskRewardRatio, setRiskRewardRatio] = useState(2);
   const [initialCapital, setInitialCapital] = useState(10000);
 
   const [showEmaFast, setShowEmaFast] = useState(true);
@@ -82,11 +105,20 @@ export default function Home() {
   const [focusDate, setFocusDate] = useState(null);
   const [focusedTradeKey, setFocusedTradeKey] = useState(null);
 
+  // Live ticker, pushed from the server every few seconds. Candles stay on
+  // closed bars; this is the only value that tracks price in real time.
+  const [livePrice, setLivePrice] = useState(null);
+  const [liveStatus, setLiveStatus] = useState("connecting");
+  const wsRef = useRef(null);
+
   const [positions, setPositions] = useState({});
   const [backtest, setBacktest] = useState(null);
+  // Every run evaluates 1:1, 1:2 and 1:3 so the ratios can be compared
+  // directly; `riskRewardRatio` then only selects which one is detailed below.
+  const [backtestByRatio, setBacktestByRatio] = useState(null);
   const [backtestLoading, setBacktestLoading] = useState(false);
   const [backtestStart, setBacktestStart] = useState("2022-01-01");
-  const [backtestEnd, setBacktestEnd] = useState("2024-12-31");
+  const [backtestEnd, setBacktestEnd] = useState(todayUTC());
   const [backtestHistory, setBacktestHistory] = useState([]);
   const [tradeReasonFilter, setTradeReasonFilter] = useState("all");
   const [logLines, setLogLines] = useState([]);
@@ -138,6 +170,71 @@ export default function Home() {
     loadBacktestHistory();
   }, [loadPositions, loadLog, loadBacktestHistory]);
 
+  // Subscribe to the server's ticker stream for the selected pair. Reconnects
+  // with a fixed backoff so a dropped socket recovers without a reload.
+  useEffect(() => {
+    let closed = false;
+    let retry;
+
+    setLivePrice(null);
+    setLiveStatus("connecting");
+
+    function connect() {
+      if (closed) return;
+      let ws;
+      try {
+        ws = new WebSocket(`${WS_BASE}/ws`);
+      } catch {
+        setLiveStatus("offline");
+        return;
+      }
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setLiveStatus("live");
+        ws.send(JSON.stringify({ type: "subscribe", pair }));
+      };
+
+      ws.onmessage = (event) => {
+        let msg;
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (msg.type === "ticker" && msg.pair === pair && typeof msg.price === "number") {
+          setLivePrice({ price: msg.price, time: msg.time, source: msg.source });
+          setLiveStatus("live");
+        } else if (msg.type === "error") {
+          setLiveStatus("offline");
+        }
+      };
+
+      ws.onerror = () => setLiveStatus("offline");
+
+      ws.onclose = () => {
+        if (closed) return;
+        setLiveStatus("offline");
+        retry = setTimeout(connect, 3000);
+      };
+    }
+
+    connect();
+
+    return () => {
+      closed = true;
+      clearTimeout(retry);
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "unsubscribe", pair }));
+        ws.close();
+      } else if (ws) {
+        ws.close();
+      }
+      wsRef.current = null;
+    };
+  }, [pair]);
+
   async function runBotOnce() {
     setToast("Running bot cycle...");
     try {
@@ -173,17 +270,28 @@ export default function Home() {
     setBacktestLoading(true);
     try {
       const zonesParam = selectedZones.length > 1 ? `&zones=${encodeURIComponent(JSON.stringify(selectedZones))}` : "";
-      const cmoParam = `&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneLow=${zoneLow}&zoneHigh=${zoneHigh}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}${zonesParam}`;
-      const res = await fetch(
-        `${API_BASE}/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}${cmoParam}`
+      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneLow=${zoneLow}&zoneHigh=${zoneHigh}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}${zonesParam}`;
+
+      const runs = await Promise.all(
+        RR_RATIOS.map(async (ratio) => {
+          const res = await fetch(
+            `${API_BASE}/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}&riskRewardRatio=${ratio}${shared}`
+          );
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          return [ratio, data];
+        })
       );
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setBacktest(data);
+
+      const byRatio = Object.fromEntries(runs);
+      setBacktestByRatio(byRatio);
+
+      const selected = byRatio[riskRewardRatio];
+      setBacktest(selected);
       setTradeReasonFilter("all");
       loadBacktestHistory();
-      if (data.trades && data.trades.length) {
-        setFocusDate(data.trades[0].date);
+      if (selected?.trades?.length) {
+        setFocusDate(selected.trades[0].date);
       }
     } catch (e) {
       setError(e.message);
@@ -192,9 +300,23 @@ export default function Home() {
     }
   }
 
+  // Switching ratio after a run swaps the detail view without refetching.
+  function selectRatio(ratio) {
+    setRiskRewardRatio(ratio);
+    if (backtestByRatio?.[ratio]) {
+      setBacktest(backtestByRatio[ratio]);
+      setTradeReasonFilter("all");
+      setFocusedTradeKey(null);
+    }
+  }
+
   const last = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
   const priceChangePct = last && prev ? ((last.close - prev.close) / prev.close) * 100 : 0;
+  // Live price is compared against the last CLOSED candle, so the delta shows
+  // how far the market has moved since that bar finished.
+  const livePrice_ = livePrice?.price ?? null;
+  const liveChangePct = livePrice_ != null && last ? ((livePrice_ - last.close) / last.close) * 100 : null;
 
   return (
     <div className="flex min-h-screen bg-[#131722] text-[#d1d4dc]">
@@ -313,6 +435,45 @@ export default function Home() {
         </label>
 
         <label className="block text-sm">
+          Stop loss: <span className="text-zinc-100 font-medium">{(stopLossPct * 100).toFixed(1)}%</span>
+          <input
+            type="range"
+            min="0.005"
+            max="0.1"
+            step="0.005"
+            value={stopLossPct}
+            onChange={(e) => setStopLossPct(Number(e.target.value))}
+            className="w-full accent-emerald-500"
+          />
+          {stopLossPct < riskPerTrade && (
+            <span className="block text-[11px] text-amber-400/90 mt-1">
+              Stop is tighter than risk per trade — positions become unaffordable and no trades open.
+            </span>
+          )}
+        </label>
+
+        <label className="block text-sm">
+          Risk : Reward <span className="text-zinc-100 font-medium">1:{riskRewardRatio}</span>
+          <span className="block text-[11px] text-zinc-500">All three run on every backtest</span>
+          <div className="mt-1 flex gap-1">
+            {RR_RATIOS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => selectRatio(r)}
+                className={`flex-1 rounded px-2 py-1 text-xs border ${
+                  riskRewardRatio === r
+                    ? "bg-emerald-600/30 border-emerald-500 text-emerald-300"
+                    : "bg-[#131722] border-[#2a2d3e] text-zinc-400 hover:border-zinc-600"
+                }`}
+              >
+                1:{r}
+              </button>
+            ))}
+          </div>
+        </label>
+
+        <label className="block text-sm">
           Initial capital: <span className="text-zinc-100 font-medium">${money(initialCapital, 0)}</span>
           <input
             type="range"
@@ -406,6 +567,7 @@ export default function Home() {
             value={backtestEnd}
             onChange={(e) => setBacktestEnd(e.target.value)}
             min={backtestStart}
+            max={todayUTC()}
             className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
           />
         </label>
@@ -428,11 +590,41 @@ export default function Home() {
         {last && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <Metric
-              label="Price"
-              value={`$${money(last.close)}`}
-              delta={`${priceChangePct >= 0 ? "+" : ""}${priceChangePct.toFixed(2)}%`}
-              deltaPositive={priceChangePct >= 0}
+              label={
+                <span className="inline-flex items-center gap-1.5">
+                  Live Price
+                  <span
+                    className={`inline-block w-1.5 h-1.5 rounded-full ${
+                      liveStatus === "live"
+                        ? "bg-green-400 animate-pulse"
+                        : liveStatus === "connecting"
+                        ? "bg-amber-400"
+                        : "bg-red-500"
+                    }`}
+                    title={
+                      liveStatus === "live"
+                        ? `Streaming${livePrice?.source ? ` from ${livePrice.source}` : ""}`
+                        : liveStatus === "connecting"
+                        ? "Connecting to price stream"
+                        : "Price stream offline — showing last closed candle"
+                    }
+                  />
+                </span>
+              }
+              value={`$${money(livePrice_ ?? last.close)}`}
+              delta={
+                liveChangePct != null
+                  ? `${liveChangePct >= 0 ? "+" : ""}${liveChangePct.toFixed(2)}%`
+                  : `${priceChangePct >= 0 ? "+" : ""}${priceChangePct.toFixed(2)}%`
+              }
+              deltaPositive={(liveChangePct ?? priceChangePct) >= 0}
+              sub={liveChangePct != null ? "since last close" : "last closed candle"}
               accent
+            />
+            <Metric
+              label="Last Close"
+              value={`$${money(last.close)}`}
+              sub={`1H bar · ${formatTime(last.time)}`}
             />
             <Metric label="EMA" value={last.ema ? `$${money(last.ema)}` : "-"} sub={`${emaLength}-period`} />
             <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= zoneLow && last.cmo <= zoneHigh ? "text-amber-400" : "text-zinc-100"} />
@@ -492,7 +684,6 @@ export default function Home() {
               showBuySignals={showBuySignals}
               showVolume={showVolume}
               showChande={showChande}
-              showEntryPriceLines
               pair={pair}
               timeframe="1h"
             />
@@ -570,14 +761,136 @@ export default function Home() {
                 {" → "}
                 {formatDate(backtest.end)}
               </div>
+              {/* Settings this run actually used, echoed back from the server
+                  so the numbers below can never be read against the wrong
+                  parameters. */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400 border border-[#2a2d3e] rounded px-3 py-2">
+                <span>Risk/trade <span className="text-zinc-200">{(backtest.riskPerTrade * 100).toFixed(1)}%</span></span>
+                <span>Stop <span className="text-zinc-200">{(backtest.stopLossPct * 100).toFixed(1)}%</span></span>
+                <span>R:R <span className="text-zinc-200">1:{backtest.riskRewardRatio}</span></span>
+                <span>Cooldown <span className="text-zinc-200">{backtest.cooldownBars} bars</span></span>
+                <span>EMA <span className="text-zinc-200">{backtest.emaLength}</span></span>
+                <span>CMO <span className="text-zinc-200">{backtest.cmoLength}</span></span>
+                <span>Zone <span className="text-zinc-200">{backtest.zoneLow} → {backtest.zoneHigh}</span></span>
+                <span>Data <span className="text-zinc-200">{backtest.source}</span></span>
+              </div>
+
               <div className="grid grid-cols-6 gap-2">
                 <Metric label="Initial" value={`$${money(backtest.initialCapital, 0)}`} />
                 <Metric label="Final" value={`$${money(backtest.finalCapital, 0)}`} />
-                <Metric label="Return" value={`${backtest.returnPct}%`} />
+                <Metric label="Return" value={`${backtest.returnPct}%`} valueColor={backtest.returnPct >= 0 ? "text-green-400/90" : "text-red-400/90"} />
                 <Metric label="Win Rate" value={`${backtest.winRate}%`} />
                 <Metric label="Total Trades" value={backtest.totalTrades} />
                 <Metric label="W / L" value={`${backtest.wins} / ${backtest.losses}`} />
               </div>
+
+              {backtestByRatio && (
+                <div className="border border-[#2a2d3e] rounded p-3 space-y-2">
+                  <div className="text-xs font-medium text-zinc-300">
+                    Ratio comparison
+                    <span className="ml-2 font-normal text-zinc-500">
+                      same entries and stop, different targets — click a row to detail it below
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="text-left text-zinc-400 border-b border-[#2a2d3e]">
+                          <th className="py-1.5 pr-4 font-medium">R:R</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Trades</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Target</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Stop</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Win %</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Break-even %</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Edge</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Total R</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Expectancy</th>
+                          <th className="py-1.5 pr-4 font-medium text-right">Return</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {RR_RATIOS.map((r) => {
+                          const run = backtestByRatio[r];
+                          if (!run?.rStats) return null;
+                          const k = run.rStats;
+                          const active = riskRewardRatio === r;
+                          return (
+                            <tr
+                              key={r}
+                              onClick={() => selectRatio(r)}
+                              className={`border-b border-[#1e2130] cursor-pointer hover:bg-[#1a1e29] ${
+                                active ? "bg-emerald-900/20 ring-1 ring-inset ring-emerald-500/40" : ""
+                              }`}
+                            >
+                              <td className="py-1.5 pr-4 font-medium text-zinc-200">1:{r}</td>
+                              <td className="py-1.5 pr-4 text-right tabular-nums text-zinc-300">{k.resolvedTrades}</td>
+                              <td className="py-1.5 pr-4 text-right tabular-nums text-green-400/90">{k.targetHits}</td>
+                              <td className="py-1.5 pr-4 text-right tabular-nums text-red-400/90">{k.stopHits}</td>
+                              <td className="py-1.5 pr-4 text-right tabular-nums text-zinc-300">{k.winRate}%</td>
+                              <td className="py-1.5 pr-4 text-right tabular-nums text-zinc-500">{k.breakEvenWinRate}%</td>
+                              <td className={`py-1.5 pr-4 text-right tabular-nums font-medium ${k.edge >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                {k.edge > 0 ? "+" : ""}{k.edge}%
+                              </td>
+                              <td className={`py-1.5 pr-4 text-right tabular-nums ${k.totalR >= 0 ? "text-green-400/90" : "text-red-400/90"}`}>
+                                {k.totalR > 0 ? "+" : ""}{k.totalR}
+                              </td>
+                              <td className={`py-1.5 pr-4 text-right tabular-nums ${k.expectancyR >= 0 ? "text-green-400/90" : "text-red-400/90"}`}>
+                                {k.expectancyR > 0 ? "+" : ""}{k.expectancyR}R
+                              </td>
+                              <td className={`py-1.5 pr-4 text-right tabular-nums font-medium ${run.returnPct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                {run.returnPct > 0 ? "+" : ""}{run.returnPct}%
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {backtest.rStats && (
+                <div className="border border-[#2a2d3e] rounded p-3 space-y-2">
+                  <div className="text-xs font-medium text-zinc-300">
+                    Fixed 1:{backtest.rStats.riskRewardRatio} performance
+                    <span className="ml-2 font-normal text-zinc-500">
+                      every trade closes at its target or its stop
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    <Metric label="Target hits" value={backtest.rStats.targetHits} valueColor="text-green-400/90" />
+                    <Metric label="Stop hits" value={backtest.rStats.stopHits} valueColor="text-red-400/90" />
+                    <Metric label="Resolved" value={backtest.rStats.resolvedTrades} sub={backtest.rStats.openAtEnd ? `${backtest.rStats.openAtEnd} open at end` : undefined} />
+                    <Metric label="Total R" value={backtest.rStats.totalR > 0 ? `+${backtest.rStats.totalR}` : backtest.rStats.totalR} valueColor={backtest.rStats.totalR >= 0 ? "text-green-400/90" : "text-red-400/90"} />
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    <Metric label="Win rate" value={`${backtest.rStats.winRate}%`} />
+                    <Metric label="Break-even" value={`${backtest.rStats.breakEvenWinRate}%`} sub="needed at this R:R" />
+                    <Metric
+                      label="Edge"
+                      value={`${backtest.rStats.edge > 0 ? "+" : ""}${backtest.rStats.edge}%`}
+                      valueColor={backtest.rStats.edge >= 0 ? "text-green-400/90" : "text-red-400/90"}
+                      sub="win rate − break-even"
+                    />
+                    <Metric
+                      label="Expectancy"
+                      value={`${backtest.rStats.expectancyR > 0 ? "+" : ""}${backtest.rStats.expectancyR}R`}
+                      valueColor={backtest.rStats.expectancyR >= 0 ? "text-green-400/90" : "text-red-400/90"}
+                      sub="avg per trade"
+                    />
+                  </div>
+
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Edge is the only figure that says whether there is an advantage: a 1:
+                    {backtest.rStats.riskRewardRatio} target needs {backtest.rStats.breakEvenWinRate}% of trades to hit
+                    to break even. Gross of fees and slippage — at roughly 0.1% per side,{" "}
+                    {backtest.rStats.resolvedTrades} trades would cost about{" "}
+                    {(backtest.rStats.resolvedTrades * 0.2).toFixed(0)}% of capital in costs.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <label className="text-xs text-zinc-400">
                   Filter by reason
@@ -607,6 +920,7 @@ export default function Home() {
                       <th className="py-2 pr-4 font-medium text-right">CMO</th>
                       <th className="py-2 pr-4 font-medium text-right">Bars</th>
                       <th className="py-2 pr-4 font-medium text-right">PnL</th>
+                      <th className="py-2 pr-4 font-medium text-right">R</th>
                       <th className="py-2 pr-4 font-medium">Reason</th>
                     </tr>
                   </thead>
@@ -636,7 +950,10 @@ export default function Home() {
                               {isBuy ? "BUY" : "SELL"}
                             </span>
                           </td>
-                          <td className="py-2 pr-4 text-right tabular-nums">
+                          <td
+                            className="py-2 pr-4 text-right tabular-nums"
+                            title={isBuy && t.stop != null ? `Stop $${money(t.stop)} · Target $${money(t.target)}` : undefined}
+                          >
                             ${money(t.price)}
                           </td>
                           <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.qty.toFixed(6)}</td>
@@ -647,6 +964,11 @@ export default function Home() {
                           <td className="py-2 pr-4 text-right tabular-nums text-zinc-400">{t.barsHeld ?? "—"}</td>
                           <td className={`py-2 pr-4 text-right tabular-nums font-medium ${isBuy ? "text-zinc-500" : isWin ? "text-green-400" : "text-red-400"}`}>
                             {isBuy ? "—" : `${isWin ? "+" : ""}$${t.pnl.toFixed(2)}`}
+                          </td>
+                          <td className={`py-2 pr-4 text-right tabular-nums font-medium ${
+                            isBuy || t.rMultiple == null ? "text-zinc-500" : t.rMultiple >= 0 ? "text-green-400" : "text-red-400"
+                          }`}>
+                            {isBuy || t.rMultiple == null ? "—" : `${t.rMultiple > 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R`}
                           </td>
                           <td className="py-2 pr-4">
                             <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${reasonStyles[t.reason] || "bg-zinc-700/40 text-zinc-400"}`}>
