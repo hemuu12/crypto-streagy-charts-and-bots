@@ -1,8 +1,8 @@
 export const PULLBACK_TIMEFRAME = "1h";
 export const PULLBACK_EMA_LENGTH = 200;
 export const PULLBACK_CMO_LENGTH = 18;
-export const PULLBACK_CMO_ZONE_LOW = -100;
-export const PULLBACK_CMO_ZONE_HIGH = -30;
+// BUY fires once CMO rises this many points above the tracked anchor low.
+export const PULLBACK_CMO_REVERSAL_POINTS = 30;
 
 // 0 = no cooldown; every qualifying candle can open a trade. Entries are
 // still bounded because a new trade only opens once the previous one has hit
