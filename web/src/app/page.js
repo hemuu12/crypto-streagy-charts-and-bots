@@ -76,6 +76,7 @@ export default function Home() {
   const [candleLimit, setCandleLimit] = useState(1000);
   const [cmoLength, setCmoLength] = useState(18);
   const [emaLength, setEmaLength] = useState(200);
+  const [zoneThreshold, setZoneThreshold] = useState(-80);
   const [reversalPoints, setReversalPoints] = useState(30);
   const [cooldownBars, setCooldownBars] = useState(0);
   // Fixed, not user-adjustable. The stop defines 1R and position size is
@@ -134,7 +135,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}`;
+      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneThreshold=${zoneThreshold}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -145,7 +146,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, candleLimit, focusDate, cmoLength, emaLength, reversalPoints, cooldownBars]);
+  }, [pair, candleLimit, focusDate, cmoLength, emaLength, zoneThreshold, reversalPoints, cooldownBars]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/positions`);
@@ -310,7 +311,7 @@ export default function Home() {
   async function runBacktest() {
     setBacktestLoading(true);
     try {
-      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}`;
+      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneThreshold=${zoneThreshold}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}`;
 
       const runs = await Promise.all(
         RR_RATIOS.map(async (ratio) => {
@@ -384,9 +385,9 @@ export default function Home() {
         </div>
 
         <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
-          EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. Tracks the lowest CMO reached while negative
-          as a dynamic anchor, then enters once CMO rises {reversalPoints} points off that low (last condition
-          checked). Timeframe is fixed for this strategy.
+          EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. Anchor starts tracking the lowest CMO once it
+          drops to {zoneThreshold}, then enters once CMO rises {reversalPoints} points off that low (last
+          condition checked). Timeframe is fixed for this strategy.
         </div>
         <label className="block text-sm">
           EMA length: <span className="text-zinc-100 font-medium">{emaLength}</span>
@@ -411,6 +412,21 @@ export default function Home() {
             onChange={(e) => setCmoLength(Number(e.target.value))}
             className="w-full accent-emerald-500"
           />
+        </label>
+        <label className="block text-sm">
+          CMO zone (anchor arms at): <span className="text-zinc-100 font-medium">{zoneThreshold}</span>
+          <input
+            type="range"
+            min="-100"
+            max="0"
+            step="1"
+            value={zoneThreshold}
+            onChange={(e) => setZoneThreshold(Number(e.target.value))}
+            className="w-full accent-emerald-500"
+          />
+          <span className="block text-[11px] text-zinc-500">
+            The anchor only starts tracking the lowest CMO once it drops to or below this value
+          </span>
         </label>
         <label className="block text-sm">
           CMO reversal distance: <span className="text-zinc-100 font-medium">{reversalPoints}</span>
@@ -780,6 +796,7 @@ export default function Home() {
                 <span>Cooldown <span className="text-zinc-200">{backtest.cooldownBars} bars</span></span>
                 <span>EMA <span className="text-zinc-200">{backtest.emaLength}</span></span>
                 <span>CMO <span className="text-zinc-200">{backtest.cmoLength}</span></span>
+                <span>Zone <span className="text-zinc-200">{backtest.zoneThreshold}</span></span>
                 <span>Reversal <span className="text-zinc-200">{backtest.reversalPoints}pt</span></span>
                 <span>Data <span className="text-zinc-200">{backtest.source}</span></span>
               </div>

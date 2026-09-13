@@ -4,6 +4,7 @@ import {
   PULLBACK_CMO_LENGTH,
   PULLBACK_COOLDOWN_BARS,
   PULLBACK_CMO_REVERSAL_POINTS,
+  PULLBACK_CMO_ZONE_THRESHOLD,
 } from "./config.js";
 
 export function dropFormingCandle(candles, timeframeMs) {
@@ -14,20 +15,23 @@ export function dropFormingCandle(candles, timeframeMs) {
 
 /**
  * Single-EMA bullish filter + CMO dynamic-anchor reversal, long only, no
- * exits. While CMO is negative, the anchor tracks the lowest CMO seen since
- * it last went negative — it only ever ratchets down, never resets on an
- * intermediate rise. A BUY fires once CMO has risen at least
- * `reversalPoints` above that anchor; the anchor then resets (armed again on
- * the next negative pullback) so the same low can't retrigger. Each BUY also
- * re-arms after `cooldownBars` candles rather than locking forever. No
- * stop-loss, take-profit, or trend-exit; a position is simply superseded by
- * the next BUY once cooldown elapses.
+ * exits. The anchor only starts arming once CMO drops to or below
+ * `zoneThreshold` (e.g. -80) — shallower dips are ignored entirely. Once
+ * armed, the anchor tracks the lowest CMO seen since — it only ever
+ * ratchets down, never resets on an intermediate rise. A BUY fires once CMO
+ * has risen at least `reversalPoints` above that anchor; the anchor then
+ * resets (unarmed, waiting for CMO to reach `zoneThreshold` again) so the
+ * same low can't retrigger. Each BUY also re-arms after `cooldownBars`
+ * candles rather than locking forever. No stop-loss, take-profit, or
+ * trend-exit; a position is simply superseded by the next BUY once cooldown
+ * elapses.
  */
 export function generatePullbackSignals(
   candles,
   {
     cmoLength = PULLBACK_CMO_LENGTH,
     emaLength = PULLBACK_EMA_LENGTH,
+    zoneThreshold = PULLBACK_CMO_ZONE_THRESHOLD,
     reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
   }
@@ -44,12 +48,12 @@ export function generatePullbackSignals(
 
   let entryPrice = null;
   let lastEntryIndex = null;
-  let anchor = null; // lowest CMO recorded since it last went negative
+  let anchor = null; // lowest CMO recorded since it last reached zoneThreshold
 
   return withIndicators.map((c, i) => {
     const cmo = c.cmo;
 
-    if (cmo != null && cmo < 0) {
+    if (cmo != null && cmo <= zoneThreshold) {
       anchor = anchor == null ? cmo : Math.min(anchor, cmo);
     }
 

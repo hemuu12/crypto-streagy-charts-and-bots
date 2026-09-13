@@ -4,6 +4,7 @@ import {
   PULLBACK_TIMEFRAME,
   PULLBACK_CMO_LENGTH,
   PULLBACK_EMA_LENGTH,
+  PULLBACK_CMO_ZONE_THRESHOLD,
   PULLBACK_CMO_REVERSAL_POINTS,
   PULLBACK_COOLDOWN_BARS,
 } from "./config.js";
@@ -16,6 +17,7 @@ export async function getPullbackSignals({
   around,
   cmoLength = PULLBACK_CMO_LENGTH,
   emaLength = PULLBACK_EMA_LENGTH,
+  zoneThreshold = PULLBACK_CMO_ZONE_THRESHOLD,
   reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
   cooldownBars = PULLBACK_COOLDOWN_BARS,
 }) {
@@ -52,6 +54,7 @@ export async function getPullbackSignals({
   const evaluated = generatePullbackSignals(candles, {
     cmoLength,
     emaLength,
+    zoneThreshold,
     reversalPoints,
     cooldownBars,
   });

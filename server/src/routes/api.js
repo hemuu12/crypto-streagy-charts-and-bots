@@ -24,6 +24,7 @@ function readStrategyParams(source) {
   return {
     cmoLength: num(source.cmoLength),
     emaLength: num(source.emaLength),
+    zoneThreshold: num(source.zoneThreshold),
     reversalPoints: num(source.reversalPoints),
     cooldownBars: num(source.cooldownBars),
     riskPerTrade: num(source.riskPerTrade),

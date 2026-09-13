@@ -1,6 +1,9 @@
 export const PULLBACK_TIMEFRAME = "1h";
 export const PULLBACK_EMA_LENGTH = 200;
 export const PULLBACK_CMO_LENGTH = 18;
+// Anchor only starts arming once CMO drops to or below this threshold.
+export const PULLBACK_CMO_ZONE_THRESHOLD = -80;
+
 // BUY fires once CMO rises this many points above the tracked anchor low.
 export const PULLBACK_CMO_REVERSAL_POINTS = 30;
 
