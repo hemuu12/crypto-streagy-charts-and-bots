@@ -11,7 +11,7 @@ export const PULLBACK_COOLDOWN_BARS = 0;
 
 // Stop distance as a fraction of entry price. This defines 1R: the target is
 // RISK_REWARD_RATIO * this distance above entry.
-export const STOP_LOSS_PCT = 0.02;
+export const STOP_LOSS_PCT = 0.01;
 export const RISK_REWARD_RATIO = 2;
 
 // Fraction of capital lost when a trade is stopped out. Position size is

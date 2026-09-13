@@ -82,7 +82,7 @@ export default function Home() {
   // derived from it, so both stay constant across the 1:1/1:2/1:3 comparison
   // — only the target moves. Server defaults match these values.
   const riskPerTrade = 0.02;
-  const stopLossPct = 0.02;
+  const stopLossPct = 0.01;
   const [riskRewardRatio, setRiskRewardRatio] = useState(2);
   const [initialCapital, setInitialCapital] = useState(10000);
 
