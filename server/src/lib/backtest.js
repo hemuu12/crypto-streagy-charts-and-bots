@@ -7,8 +7,6 @@ import {
   RISK_PER_TRADE,
   PULLBACK_CMO_LENGTH,
   PULLBACK_EMA_LENGTH,
-  PULLBACK_ZONE_A_LOW,
-  PULLBACK_ZONE_A_HIGH,
   PULLBACK_CMO_REVERSAL_POINTS,
   PULLBACK_COOLDOWN_BARS,
   STOP_LOSS_PCT,
@@ -29,7 +27,6 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
   const {
     cmoLength = PULLBACK_CMO_LENGTH,
     emaLength = PULLBACK_EMA_LENGTH,
-    zoneA = [PULLBACK_ZONE_A_LOW, PULLBACK_ZONE_A_HIGH],
     reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
     riskPerTrade = RISK_PER_TRADE,
@@ -42,7 +39,6 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
   const evaluated = generatePullbackSignals(raw, {
     cmoLength,
     emaLength,
-    zoneA,
     reversalPoints,
     cooldownBars,
   });
@@ -106,7 +102,7 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
           qty,
           stop,
           target: open.target,
-          reason: "cmo_zone_reversal",
+          reason: "cmo_ema_pullback",
           ...snapshot(c),
         });
       }
@@ -155,7 +151,6 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
     end,
     cmoLength,
     emaLength,
-    zoneA,
     reversalPoints,
     cooldownBars,
     riskPerTrade,

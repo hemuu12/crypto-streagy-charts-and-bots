@@ -2,10 +2,8 @@ import { ema, chandeMO } from "./indicators.js";
 import {
   PULLBACK_EMA_LENGTH,
   PULLBACK_CMO_LENGTH,
-  PULLBACK_ZONE_A_LOW,
-  PULLBACK_ZONE_A_HIGH,
-  PULLBACK_CMO_REVERSAL_POINTS,
   PULLBACK_COOLDOWN_BARS,
+  PULLBACK_CMO_REVERSAL_POINTS,
 } from "./config.js";
 
 export function dropFormingCandle(candles, timeframeMs) {
@@ -15,20 +13,21 @@ export function dropFormingCandle(candles, timeframeMs) {
 }
 
 /**
- * Single-EMA bullish filter + CMO zone reversal, long only, no exits. CMO
- * must sit in zone A, then a BUY fires once CMO has risen at least
- * `reversalPoints` above the lowest CMO recorded since it entered that zone
- * — the anchor resets whenever CMO leaves the zone. Each BUY re-arms after
- * `cooldownBars` candles rather than locking forever. No stop-loss,
- * take-profit, or trend-exit; a position is simply superseded by the next
- * BUY once cooldown elapses.
+ * Single-EMA bullish filter + CMO dynamic-anchor reversal, long only, no
+ * exits. While CMO is negative, the anchor tracks the lowest CMO seen since
+ * it last went negative — it only ever ratchets down, never resets on an
+ * intermediate rise. A BUY fires once CMO has risen at least
+ * `reversalPoints` above that anchor; the anchor then resets (armed again on
+ * the next negative pullback) so the same low can't retrigger. Each BUY also
+ * re-arms after `cooldownBars` candles rather than locking forever. No
+ * stop-loss, take-profit, or trend-exit; a position is simply superseded by
+ * the next BUY once cooldown elapses.
  */
 export function generatePullbackSignals(
   candles,
   {
     cmoLength = PULLBACK_CMO_LENGTH,
     emaLength = PULLBACK_EMA_LENGTH,
-    zoneA = [PULLBACK_ZONE_A_LOW, PULLBACK_ZONE_A_HIGH],
     reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
   }
@@ -45,23 +44,19 @@ export function generatePullbackSignals(
 
   let entryPrice = null;
   let lastEntryIndex = null;
-  let anchor = null; // lowest CMO recorded since it entered the zone
+  let anchor = null; // lowest CMO recorded since it last went negative
 
   return withIndicators.map((c, i) => {
     const cmo = c.cmo;
-    const [low, high] = zoneA;
-    const cmoInZone = cmo != null && cmo >= low && cmo <= high;
 
-    if (cmoInZone) {
+    if (cmo != null && cmo < 0) {
       anchor = anchor == null ? cmo : Math.min(anchor, cmo);
-    } else {
-      anchor = null;
     }
 
     const priceAboveEma = c.ema != null && c.close > c.ema;
-    const reversalFromLow = anchor != null && cmo - anchor >= reversalPoints;
-    const cmoNegative = cmo != null && cmo < 0;
-    const checks = { priceAboveEma, cmoInZone, reversalFromLow, cmoNegative };
+    const reversalArmed = anchor != null && cmo != null;
+    const reversalFromLow = reversalArmed && cmo - anchor >= reversalPoints;
+    const checks = { priceAboveEma, reversalFromLow };
 
     const inCooldown = lastEntryIndex != null && i - lastEntryIndex < cooldownBars;
 
@@ -72,7 +67,8 @@ export function generatePullbackSignals(
     if (Object.values(checks).every(Boolean)) {
       entryPrice = c.close;
       lastEntryIndex = i;
-      return { ...c, signal: 1, reason: "cmo_zone_reversal", checks, inPosition: true, entryPrice };
+      anchor = null; // wait for the next negative CMO pullback to re-arm
+      return { ...c, signal: 1, reason: "cmo_anchor_reversal", checks, inPosition: true, entryPrice };
     }
 
     return { ...c, signal: 0, checks, inPosition: entryPrice != null, entryPrice };

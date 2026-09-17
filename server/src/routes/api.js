@@ -17,17 +17,6 @@ function num(v) {
   return v === undefined || v === null || v === "" ? undefined : Number(v);
 }
 
-function parseZone(raw) {
-  if (!raw) return undefined;
-  if (Array.isArray(raw)) return raw;
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 // Shared strategy/backtest params, whether they arrive as query strings
 // (GET) or a JSON body (POST) — the frontend supplies all of these per
 // request rather than the server assuming fixed defaults.
@@ -35,7 +24,6 @@ function readStrategyParams(source) {
   return {
     cmoLength: num(source.cmoLength),
     emaLength: num(source.emaLength),
-    zoneA: parseZone(source.zoneA),
     reversalPoints: num(source.reversalPoints),
     cooldownBars: num(source.cooldownBars),
     riskPerTrade: num(source.riskPerTrade),

@@ -57,14 +57,14 @@ const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "AVAX/USDT", "XRP
 const RR_RATIOS = [1, 2, 3];
 
 const REASON_STYLES = {
-  cmo_zone_reversal: "bg-blue-900/40 text-blue-400",
+  cmo_anchor_reversal: "bg-blue-900/40 text-blue-400",
   take_profit: "bg-green-900/40 text-green-400",
   stop_loss: "bg-red-900/40 text-red-400",
   end_of_data: "bg-zinc-700/40 text-zinc-400",
 };
 
 const REASON_LABELS = {
-  cmo_zone_reversal: "CMO Zone Reversal",
+  cmo_anchor_reversal: "CMO Reversal",
   take_profit: "Target Hit",
   stop_loss: "Stopped Out",
   end_of_data: "End of Data",
@@ -76,15 +76,13 @@ export default function Home() {
   const [candleLimit, setCandleLimit] = useState(1000);
   const [cmoLength, setCmoLength] = useState(18);
   const [emaLength, setEmaLength] = useState(200);
-  const zoneALow = -100;
-  const [zoneAHigh, setZoneAHigh] = useState(-70);
-  const [reversalPoints, setReversalPoints] = useState(10);
+  const [reversalPoints, setReversalPoints] = useState(30);
   const [cooldownBars, setCooldownBars] = useState(0);
   // Fixed, not user-adjustable. The stop defines 1R and position size is
   // derived from it, so both stay constant across the 1:1/1:2/1:3 comparison
   // — only the target moves. Server defaults match these values.
   const riskPerTrade = 0.02;
-  const stopLossPct = 0.02;
+  const stopLossPct = 0.01;
   const [riskRewardRatio, setRiskRewardRatio] = useState(2);
   const [initialCapital, setInitialCapital] = useState(10000);
 
@@ -136,8 +134,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const zoneAQuery = `&zoneA=${encodeURIComponent(JSON.stringify([zoneALow, zoneAHigh]))}`;
-      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}${zoneAQuery}`;
+      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -148,7 +145,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, candleLimit, focusDate, cmoLength, emaLength, zoneALow, zoneAHigh, reversalPoints, cooldownBars]);
+  }, [pair, candleLimit, focusDate, cmoLength, emaLength, reversalPoints, cooldownBars]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/positions`);
@@ -313,8 +310,7 @@ export default function Home() {
   async function runBacktest() {
     setBacktestLoading(true);
     try {
-      const zoneAParam = `&zoneA=${encodeURIComponent(JSON.stringify([zoneALow, zoneAHigh]))}`;
-      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}${zoneAParam}`;
+      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}`;
 
       const runs = await Promise.all(
         RR_RATIOS.map(async (ratio) => {
@@ -388,10 +384,9 @@ export default function Home() {
         </div>
 
         <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
-          EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. First condition: price above the EMA. Then
-          CMO must sit in zone A ({zoneALow}..{zoneAHigh}), and have risen at
-          least {reversalPoints} points off its low within that zone (last condition checked). Timeframe is fixed
-          for this strategy.
+          EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. Tracks the lowest CMO reached while negative
+          as a dynamic anchor, then enters once CMO rises {reversalPoints} points off that low (last condition
+          checked). Timeframe is fixed for this strategy.
         </div>
         <label className="block text-sm">
           EMA length: <span className="text-zinc-100 font-medium">{emaLength}</span>
@@ -417,38 +412,19 @@ export default function Home() {
             className="w-full accent-emerald-500"
           />
         </label>
-        <div className="text-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span>Zone A</span>
-            <span className="text-zinc-100 font-medium font-mono tabular-nums">{zoneALow} → {zoneAHigh}</span>
-          </div>
-          <label className="block text-xs text-zinc-500">
-            High
-            <input
-              type="range"
-              min="-100"
-              max="0"
-              step="1"
-              value={zoneAHigh}
-              onChange={(e) => setZoneAHigh(Number(e.target.value))}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-        </div>
-
         <label className="block text-sm">
-          Reversal distance: <span className="text-zinc-100 font-medium">{reversalPoints}</span>
+          CMO reversal distance: <span className="text-zinc-100 font-medium">{reversalPoints}</span>
           <input
             type="range"
-            min="1"
-            max="50"
+            min="10"
+            max="100"
             step="1"
             value={reversalPoints}
             onChange={(e) => setReversalPoints(Number(e.target.value))}
             className="w-full accent-emerald-500"
           />
-          <span className="block text-[11px] text-zinc-500 mt-1">
-            Points CMO must rise off its low within a zone before BUY fires
+          <span className="block text-[11px] text-zinc-500">
+            BUY fires once CMO rises {reversalPoints} points above the lowest CMO recorded since it last went negative
           </span>
         </label>
 
@@ -644,7 +620,7 @@ export default function Home() {
               }
             />
             <Metric label="EMA" value={last.ema ? `$${money(last.ema)}` : "-"} sub={`${emaLength}-period`} />
-            <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.checks?.cmoInZone ? "text-amber-400" : "text-zinc-100"} />
+            <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo < 0 ? "text-amber-400" : "text-zinc-100"} />
             <Metric label="24h High" value={`$${money(last.high)}`} valueColor="text-green-400/90" />
             <Metric label="24h Low" value={`$${money(last.low)}`} valueColor="text-red-400/90" />
           </div>
@@ -660,11 +636,10 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               <Check label={`Price > EMA ${emaLength}`} ok={last.checks.priceAboveEma} detail={`${last.close?.toFixed(0) ?? "—"} vs ${last.ema?.toFixed(0) ?? "—"}`} />
-              <Check label={`CMO in zone A/B`} ok={last.checks.cmoInZone} detail={last.cmo?.toFixed(1) ?? "—"} />
-              <Check label={`Reversal ≥ ${reversalPoints} pts off low`} ok={last.checks.reversalFromLow} detail={last.cmo?.toFixed(1) ?? "—"} />
+              <Check label="CMO +30 off low" ok={last.checks.reversalFromLow} detail={last.cmo?.toFixed(1) ?? "—"} />
             </div>
             <p className="text-xs text-zinc-500 mt-2">
-              All three must pass on a closed candle to open a long. Once open, entry conditions stop being
+              Both must pass on a closed candle to open a long. Once open, entry conditions stop being
               checked — the marker stays until an exit fires.
             </p>
           </div>
@@ -805,8 +780,7 @@ export default function Home() {
                 <span>Cooldown <span className="text-zinc-200">{backtest.cooldownBars} bars</span></span>
                 <span>EMA <span className="text-zinc-200">{backtest.emaLength}</span></span>
                 <span>CMO <span className="text-zinc-200">{backtest.cmoLength}</span></span>
-                <span>Zone A <span className="text-zinc-200">{backtest.zoneA?.[0]} → {backtest.zoneA?.[1]}</span></span>
-                <span>Reversal <span className="text-zinc-200">{backtest.reversalPoints} pts</span></span>
+                <span>Reversal <span className="text-zinc-200">{backtest.reversalPoints}pt</span></span>
                 <span>Data <span className="text-zinc-200">{backtest.source}</span></span>
               </div>
 
