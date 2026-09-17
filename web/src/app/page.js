@@ -54,17 +54,25 @@ function todayUTC() {
 
 const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "AVAX/USDT", "XRP/USDT", "ADA/USDT"];
 
+// Rolling 40-point-wide CMO zones, sliding from the extreme (-100..-60) up to
+// (-20..+20).
+const ZONE_PRESETS = Array.from({ length: 81 }, (_, i) => {
+  const low = -100 + i;
+  const high = low + 40;
+  return { low, high, label: `${low} → ${high > 0 ? "+" + high : high}` };
+});
+
 const RR_RATIOS = [1, 2, 3];
 
 const REASON_STYLES = {
-  cmo_anchor_reversal: "bg-blue-900/40 text-blue-400",
+  cmo_ema_pullback: "bg-blue-900/40 text-blue-400",
   take_profit: "bg-green-900/40 text-green-400",
   stop_loss: "bg-red-900/40 text-red-400",
   end_of_data: "bg-zinc-700/40 text-zinc-400",
 };
 
 const REASON_LABELS = {
-  cmo_anchor_reversal: "CMO Reversal",
+  cmo_ema_pullback: "CMO + EMA",
   take_profit: "Target Hit",
   stop_loss: "Stopped Out",
   end_of_data: "End of Data",
@@ -76,14 +84,15 @@ export default function Home() {
   const [candleLimit, setCandleLimit] = useState(1000);
   const [cmoLength, setCmoLength] = useState(18);
   const [emaLength, setEmaLength] = useState(200);
-  const [zoneThreshold, setZoneThreshold] = useState(-80);
-  const [reversalPoints, setReversalPoints] = useState(30);
+  const [zoneLow, setZoneLow] = useState(-100);
+  const [zoneHigh, setZoneHigh] = useState(-30);
+  const [selectedZones, setSelectedZones] = useState([]);
   const [cooldownBars, setCooldownBars] = useState(0);
   // Fixed, not user-adjustable. The stop defines 1R and position size is
   // derived from it, so both stay constant across the 1:1/1:2/1:3 comparison
   // — only the target moves. Server defaults match these values.
   const riskPerTrade = 0.02;
-  const stopLossPct = 0.01;
+  const stopLossPct = 0.02;
   const [riskRewardRatio, setRiskRewardRatio] = useState(2);
   const [initialCapital, setInitialCapital] = useState(10000);
 
@@ -135,7 +144,8 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneThreshold=${zoneThreshold}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}`;
+      const zonesQuery = selectedZones.length > 1 ? `&zones=${encodeURIComponent(JSON.stringify(selectedZones))}` : "";
+      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneLow=${zoneLow}&zoneHigh=${zoneHigh}&cooldownBars=${cooldownBars}${zonesQuery}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -146,7 +156,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, candleLimit, focusDate, cmoLength, emaLength, zoneThreshold, reversalPoints, cooldownBars]);
+  }, [pair, candleLimit, focusDate, cmoLength, emaLength, zoneLow, zoneHigh, cooldownBars, selectedZones]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/positions`);
@@ -311,7 +321,8 @@ export default function Home() {
   async function runBacktest() {
     setBacktestLoading(true);
     try {
-      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneThreshold=${zoneThreshold}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}`;
+      const zonesParam = selectedZones.length > 1 ? `&zones=${encodeURIComponent(JSON.stringify(selectedZones))}` : "";
+      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&zoneLow=${zoneLow}&zoneHigh=${zoneHigh}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}${zonesParam}`;
 
       const runs = await Promise.all(
         RR_RATIOS.map(async (ratio) => {
@@ -385,9 +396,8 @@ export default function Home() {
         </div>
 
         <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
-          EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. Anchor starts tracking the lowest CMO once it
-          drops to {zoneThreshold}, then enters once CMO rises {reversalPoints} points off that low (last
-          condition checked). Timeframe is fixed for this strategy.
+          EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. Entry needs price above the EMA and CMO
+          sitting between {zoneLow} and {zoneHigh} (last condition checked). Timeframe is fixed for this strategy.
         </div>
         <label className="block text-sm">
           EMA length: <span className="text-zinc-100 font-medium">{emaLength}</span>
@@ -413,36 +423,58 @@ export default function Home() {
             className="w-full accent-emerald-500"
           />
         </label>
-        <label className="block text-sm">
-          CMO zone (anchor arms at): <span className="text-zinc-100 font-medium">{zoneThreshold}</span>
-          <input
-            type="range"
-            min="-100"
-            max="0"
-            step="1"
-            value={zoneThreshold}
-            onChange={(e) => setZoneThreshold(Number(e.target.value))}
-            className="w-full accent-emerald-500"
-          />
-          <span className="block text-[11px] text-zinc-500">
-            The anchor only starts tracking the lowest CMO once it drops to or below this value
-          </span>
-        </label>
-        <label className="block text-sm">
-          CMO reversal distance: <span className="text-zinc-100 font-medium">{reversalPoints}</span>
-          <input
-            type="range"
-            min="10"
-            max="100"
-            step="1"
-            value={reversalPoints}
-            onChange={(e) => setReversalPoints(Number(e.target.value))}
-            className="w-full accent-emerald-500"
-          />
-          <span className="block text-[11px] text-zinc-500">
-            BUY fires once CMO rises {reversalPoints} points above the lowest CMO recorded since it last went negative
-          </span>
-        </label>
+        <div className="text-sm">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <span>CMO zone presets</span>
+            {selectedZones.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedZones([])}
+                className="text-xs text-zinc-500 hover:text-zinc-300 shrink-0"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {selectedZones.length > 0 && (
+            <span className="inline-block text-xs font-medium text-emerald-400 bg-emerald-400/10 rounded-full px-2 py-0.5 mb-1.5">
+              {selectedZones.length} selected
+            </span>
+          )}
+          <div className="max-h-56 overflow-y-auto border border-[#2a2d3e] rounded-lg divide-y divide-[#1e2130] bg-[#0d1017]">
+            {ZONE_PRESETS.map((z) => {
+              const checked = selectedZones.some(([l, h]) => l === z.low && h === z.high);
+              return (
+                <label
+                  key={z.label}
+                  className={`flex items-center gap-2 text-xs px-2 py-1 cursor-pointer transition-colors ${
+                    checked ? "bg-emerald-500/10 text-emerald-300" : "text-zinc-400 hover:bg-[#1c1f2e] hover:text-zinc-200"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      let next;
+                      if (e.target.checked) next = [...selectedZones, [z.low, z.high]];
+                      else next = selectedZones.filter(([l, h]) => !(l === z.low && h === z.high));
+                      setSelectedZones(next);
+                      if (next.length) {
+                        setZoneLow(next[0][0]);
+                        setZoneHigh(next[0][1]);
+                      }
+                    }}
+                    className="accent-emerald-500 shrink-0"
+                  />
+                  <span className="font-mono tabular-nums whitespace-nowrap">{z.label}</span>
+                </label>
+              );
+            })}
+          </div>
+          {selectedZones.length > 1 && (
+            <span className="text-xs text-zinc-500 mt-1 inline-block">Matches if CMO falls in ANY selected zone</span>
+          )}
+        </div>
 
         <label className="block text-sm">
           Cooldown (bars): <span className="text-zinc-100 font-medium">{cooldownBars}</span>
@@ -527,10 +559,12 @@ export default function Home() {
           <input type="checkbox" checked={showEmaFast} onChange={(e) => setShowEmaFast(e.target.checked)} />
           {`EMA (${emaLength})`}
         </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showBuySignals} onChange={(e) => setShowBuySignals(e.target.checked)} />
-          Buy Signals
-        </label>
+        {selectedZones.length > 0 && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showBuySignals} onChange={(e) => setShowBuySignals(e.target.checked)} />
+            Buy Signals
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={showVolume} onChange={(e) => setShowVolume(e.target.checked)} />
           Volume
@@ -547,12 +581,18 @@ export default function Home() {
           Paper Trading
         </label>
 
-        <button
-          onClick={runBotOnce}
-          className="w-full bg-blue-600 hover:bg-blue-700 rounded py-2 text-sm font-medium"
-        >
-          Run Bot Once
-        </button>
+        {selectedZones.length > 0 ? (
+          <button
+            onClick={runBotOnce}
+            className="w-full bg-blue-600 hover:bg-blue-700 rounded py-2 text-sm font-medium"
+          >
+            Run Bot Once
+          </button>
+        ) : (
+          <div className="text-xs text-zinc-500 text-center py-1.5">
+            Select a CMO zone preset to enable
+          </div>
+        )}
         <hr className="border-[#2a2d3e]" />
 
         <label className="block text-sm">
@@ -636,7 +676,7 @@ export default function Home() {
               }
             />
             <Metric label="EMA" value={last.ema ? `$${money(last.ema)}` : "-"} sub={`${emaLength}-period`} />
-            <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo < 0 ? "text-amber-400" : "text-zinc-100"} />
+            <Metric label="CMO (1H)" value={last.cmo != null ? last.cmo.toFixed(1) : "—"} sub={`length ${cmoLength}`} valueColor={last.cmo >= zoneLow && last.cmo <= zoneHigh ? "text-amber-400" : "text-zinc-100"} />
             <Metric label="24h High" value={`$${money(last.high)}`} valueColor="text-green-400/90" />
             <Metric label="24h Low" value={`$${money(last.low)}`} valueColor="text-red-400/90" />
           </div>
@@ -652,7 +692,7 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               <Check label={`Price > EMA ${emaLength}`} ok={last.checks.priceAboveEma} detail={`${last.close?.toFixed(0) ?? "—"} vs ${last.ema?.toFixed(0) ?? "—"}`} />
-              <Check label="CMO +30 off low" ok={last.checks.reversalFromLow} detail={last.cmo?.toFixed(1) ?? "—"} />
+              <Check label={`CMO ${zoneLow}..${zoneHigh}`} ok={last.checks.cmoInZone} detail={last.cmo?.toFixed(1) ?? "—"} />
             </div>
             <p className="text-xs text-zinc-500 mt-2">
               Both must pass on a closed candle to open a long. Once open, entry conditions stop being
@@ -690,7 +730,7 @@ export default function Home() {
               candles={candles}
               showEmaFast={showEmaFast}
               showEmaSlow={false}
-              showBuySignals={showBuySignals}
+              showBuySignals={showBuySignals && selectedZones.length > 0}
               showVolume={showVolume}
               showChande={showChande}
               pair={pair}
@@ -796,8 +836,7 @@ export default function Home() {
                 <span>Cooldown <span className="text-zinc-200">{backtest.cooldownBars} bars</span></span>
                 <span>EMA <span className="text-zinc-200">{backtest.emaLength}</span></span>
                 <span>CMO <span className="text-zinc-200">{backtest.cmoLength}</span></span>
-                <span>Zone <span className="text-zinc-200">{backtest.zoneThreshold}</span></span>
-                <span>Reversal <span className="text-zinc-200">{backtest.reversalPoints}pt</span></span>
+                <span>Zone <span className="text-zinc-200">{backtest.zoneLow} → {backtest.zoneHigh}</span></span>
                 <span>Data <span className="text-zinc-200">{backtest.source}</span></span>
               </div>
 
