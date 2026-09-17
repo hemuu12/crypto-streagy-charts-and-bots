@@ -7,8 +7,8 @@ import {
   RISK_PER_TRADE,
   PULLBACK_CMO_LENGTH,
   PULLBACK_EMA_LENGTH,
-  PULLBACK_CMO_ZONE_THRESHOLD,
-  PULLBACK_CMO_REVERSAL_POINTS,
+  PULLBACK_CMO_ZONE_LOW,
+  PULLBACK_CMO_ZONE_HIGH,
   PULLBACK_COOLDOWN_BARS,
   STOP_LOSS_PCT,
   RISK_REWARD_RATIO,
@@ -28,8 +28,9 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
   const {
     cmoLength = PULLBACK_CMO_LENGTH,
     emaLength = PULLBACK_EMA_LENGTH,
-    zoneThreshold = PULLBACK_CMO_ZONE_THRESHOLD,
-    reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
+    zoneLow = PULLBACK_CMO_ZONE_LOW,
+    zoneHigh = PULLBACK_CMO_ZONE_HIGH,
+    zones,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
     riskPerTrade = RISK_PER_TRADE,
     initialCapital = INITIAL_CAPITAL,
@@ -41,8 +42,9 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
   const evaluated = generatePullbackSignals(raw, {
     cmoLength,
     emaLength,
-    zoneThreshold,
-    reversalPoints,
+    zoneLow,
+    zoneHigh,
+    zones,
     cooldownBars,
   });
 
@@ -85,12 +87,8 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
       const stop = c.close * (1 - stopLossPct);
       const riskPerUnit = c.close - stop;
       // Size so that a stopped-out trade loses exactly `riskPerTrade` of
-      // current capital — but never buy more than capital allows (this is
-      // spot, no leverage). If `riskPerTrade` exceeds `stopLossPct`, the
-      // risk-sized qty would cost more than 100% of capital, so cap it.
-      const riskSizedQty = riskPerUnit > 0 ? (capital * riskPerTrade) / riskPerUnit : 0;
-      const maxAffordableQty = c.close > 0 ? capital / c.close : 0;
-      const qty = Math.min(riskSizedQty, maxAffordableQty);
+      // current capital.
+      const qty = riskPerUnit > 0 ? (capital * riskPerTrade) / riskPerUnit : 0;
       const cost = qty * c.close;
 
       if (qty > 0 && cost <= capital) {
@@ -109,7 +107,7 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
           qty,
           stop,
           target: open.target,
-          reason: "cmo_anchor_reversal",
+          reason: "cmo_ema_pullback",
           ...snapshot(c),
         });
       }
@@ -158,8 +156,9 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
     end,
     cmoLength,
     emaLength,
-    zoneThreshold,
-    reversalPoints,
+    zoneLow,
+    zoneHigh,
+    zones,
     cooldownBars,
     riskPerTrade,
     stopLossPct,
