@@ -6,8 +6,6 @@ import {
   PULLBACK_EMA_LENGTH,
   PULLBACK_ZONE_A_LOW,
   PULLBACK_ZONE_A_HIGH,
-  PULLBACK_ZONE_B_LOW,
-  PULLBACK_ZONE_B_HIGH,
   PULLBACK_CMO_REVERSAL_POINTS,
   PULLBACK_COOLDOWN_BARS,
 } from "./config.js";
@@ -21,8 +19,6 @@ export async function getPullbackSignals({
   cmoLength = PULLBACK_CMO_LENGTH,
   emaLength = PULLBACK_EMA_LENGTH,
   zoneA = [PULLBACK_ZONE_A_LOW, PULLBACK_ZONE_A_HIGH],
-  zoneB = [PULLBACK_ZONE_B_LOW, PULLBACK_ZONE_B_HIGH],
-  zones,
   reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
   cooldownBars = PULLBACK_COOLDOWN_BARS,
 }) {
@@ -60,8 +56,6 @@ export async function getPullbackSignals({
     cmoLength,
     emaLength,
     zoneA,
-    zoneB,
-    zones,
     reversalPoints,
     cooldownBars,
   });

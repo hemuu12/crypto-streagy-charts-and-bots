@@ -5,8 +5,6 @@ export const PULLBACK_CMO_LENGTH = 18;
 // must climb off its low within a zone before a BUY fires.
 export const PULLBACK_ZONE_A_LOW = -100;
 export const PULLBACK_ZONE_A_HIGH = -70;
-export const PULLBACK_ZONE_B_LOW = 0;
-export const PULLBACK_ZONE_B_HIGH = 30;
 export const PULLBACK_CMO_REVERSAL_POINTS = 10;
 
 // 0 = no cooldown; every qualifying candle can open a trade. Entries are

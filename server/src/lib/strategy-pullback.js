@@ -4,8 +4,6 @@ import {
   PULLBACK_CMO_LENGTH,
   PULLBACK_ZONE_A_LOW,
   PULLBACK_ZONE_A_HIGH,
-  PULLBACK_ZONE_B_LOW,
-  PULLBACK_ZONE_B_HIGH,
   PULLBACK_CMO_REVERSAL_POINTS,
   PULLBACK_COOLDOWN_BARS,
 } from "./config.js";
@@ -18,12 +16,12 @@ export function dropFormingCandle(candles, timeframeMs) {
 
 /**
  * Single-EMA bullish filter + CMO zone reversal, long only, no exits. CMO
- * must sit in zone A or zone B (OR'd), then a BUY fires once CMO has risen
- * at least `reversalPoints` above the lowest CMO recorded since it entered
- * that zone — the anchor resets whenever CMO leaves both zones. Each BUY
- * re-arms after `cooldownBars` candles rather than locking forever. No
- * stop-loss, take-profit, or trend-exit; a position is simply superseded by
- * the next BUY once cooldown elapses.
+ * must sit in zone A, then a BUY fires once CMO has risen at least
+ * `reversalPoints` above the lowest CMO recorded since it entered that zone
+ * — the anchor resets whenever CMO leaves the zone. Each BUY re-arms after
+ * `cooldownBars` candles rather than locking forever. No stop-loss,
+ * take-profit, or trend-exit; a position is simply superseded by the next
+ * BUY once cooldown elapses.
  */
 export function generatePullbackSignals(
   candles,
@@ -31,13 +29,10 @@ export function generatePullbackSignals(
     cmoLength = PULLBACK_CMO_LENGTH,
     emaLength = PULLBACK_EMA_LENGTH,
     zoneA = [PULLBACK_ZONE_A_LOW, PULLBACK_ZONE_A_HIGH],
-    zoneB = [PULLBACK_ZONE_B_LOW, PULLBACK_ZONE_B_HIGH],
-    zones,
     reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
   }
 ) {
-  const resolvedZones = zones && zones.length ? zones : [zoneA, zoneB];
   const closes = candles.map((c) => c.close);
   const emaSeries = ema(closes, emaLength);
   const cmoSeries = chandeMO(closes, cmoLength);
@@ -50,11 +45,12 @@ export function generatePullbackSignals(
 
   let entryPrice = null;
   let lastEntryIndex = null;
-  let anchor = null; // lowest CMO recorded since it entered a zone
+  let anchor = null; // lowest CMO recorded since it entered the zone
 
   return withIndicators.map((c, i) => {
     const cmo = c.cmo;
-    const cmoInZone = cmo != null && resolvedZones.some(([low, high]) => cmo >= low && cmo <= high);
+    const [low, high] = zoneA;
+    const cmoInZone = cmo != null && cmo >= low && cmo <= high;
 
     if (cmoInZone) {
       anchor = anchor == null ? cmo : Math.min(anchor, cmo);
@@ -64,7 +60,8 @@ export function generatePullbackSignals(
 
     const priceAboveEma = c.ema != null && c.close > c.ema;
     const reversalFromLow = anchor != null && cmo - anchor >= reversalPoints;
-    const checks = { priceAboveEma, cmoInZone, reversalFromLow };
+    const cmoNegative = cmo != null && cmo < 0;
+    const checks = { priceAboveEma, cmoInZone, reversalFromLow, cmoNegative };
 
     const inCooldown = lastEntryIndex != null && i - lastEntryIndex < cooldownBars;
 

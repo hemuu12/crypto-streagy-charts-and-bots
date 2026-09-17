@@ -76,10 +76,8 @@ export default function Home() {
   const [candleLimit, setCandleLimit] = useState(1000);
   const [cmoLength, setCmoLength] = useState(18);
   const [emaLength, setEmaLength] = useState(200);
-  const [zoneALow, setZoneALow] = useState(-100);
+  const zoneALow = -100;
   const [zoneAHigh, setZoneAHigh] = useState(-70);
-  const [zoneBLow, setZoneBLow] = useState(0);
-  const [zoneBHigh, setZoneBHigh] = useState(30);
   const [reversalPoints, setReversalPoints] = useState(10);
   const [cooldownBars, setCooldownBars] = useState(0);
   // Fixed, not user-adjustable. The stop defines 1R and position size is
@@ -139,8 +137,7 @@ export default function Home() {
     setError(null);
     try {
       const zoneAQuery = `&zoneA=${encodeURIComponent(JSON.stringify([zoneALow, zoneAHigh]))}`;
-      const zoneBQuery = `&zoneB=${encodeURIComponent(JSON.stringify([zoneBLow, zoneBHigh]))}`;
-      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}${zoneAQuery}${zoneBQuery}`;
+      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}${zoneAQuery}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -151,7 +148,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, candleLimit, focusDate, cmoLength, emaLength, zoneALow, zoneAHigh, zoneBLow, zoneBHigh, reversalPoints, cooldownBars]);
+  }, [pair, candleLimit, focusDate, cmoLength, emaLength, zoneALow, zoneAHigh, reversalPoints, cooldownBars]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/positions`);
@@ -317,8 +314,7 @@ export default function Home() {
     setBacktestLoading(true);
     try {
       const zoneAParam = `&zoneA=${encodeURIComponent(JSON.stringify([zoneALow, zoneAHigh]))}`;
-      const zoneBParam = `&zoneB=${encodeURIComponent(JSON.stringify([zoneBLow, zoneBHigh]))}`;
-      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}${zoneAParam}${zoneBParam}`;
+      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}${zoneAParam}`;
 
       const runs = await Promise.all(
         RR_RATIOS.map(async (ratio) => {
@@ -393,7 +389,7 @@ export default function Home() {
 
         <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
           EMA {emaLength} + CMO {cmoLength}, all on 1H · long only. First condition: price above the EMA. Then
-          CMO must sit in zone A ({zoneALow}..{zoneAHigh}) or zone B ({zoneBLow}..{zoneBHigh}), and have risen at
+          CMO must sit in zone A ({zoneALow}..{zoneAHigh}), and have risen at
           least {reversalPoints} points off its low within that zone (last condition checked). Timeframe is fixed
           for this strategy.
         </div>
@@ -427,18 +423,6 @@ export default function Home() {
             <span className="text-zinc-100 font-medium font-mono tabular-nums">{zoneALow} → {zoneAHigh}</span>
           </div>
           <label className="block text-xs text-zinc-500">
-            Low
-            <input
-              type="range"
-              min="-100"
-              max="0"
-              step="1"
-              value={zoneALow}
-              onChange={(e) => setZoneALow(Math.min(Number(e.target.value), zoneAHigh))}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-          <label className="block text-xs text-zinc-500">
             High
             <input
               type="range"
@@ -446,43 +430,11 @@ export default function Home() {
               max="0"
               step="1"
               value={zoneAHigh}
-              onChange={(e) => setZoneAHigh(Math.max(Number(e.target.value), zoneALow))}
+              onChange={(e) => setZoneAHigh(Number(e.target.value))}
               className="w-full accent-emerald-500"
             />
           </label>
         </div>
-
-        <div className="text-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span>Zone B</span>
-            <span className="text-zinc-100 font-medium font-mono tabular-nums">{zoneBLow} → {zoneBHigh}</span>
-          </div>
-          <label className="block text-xs text-zinc-500">
-            Low
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={zoneBLow}
-              onChange={(e) => setZoneBLow(Math.min(Number(e.target.value), zoneBHigh))}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-          <label className="block text-xs text-zinc-500">
-            High
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={zoneBHigh}
-              onChange={(e) => setZoneBHigh(Math.max(Number(e.target.value), zoneBLow))}
-              className="w-full accent-emerald-500"
-            />
-          </label>
-        </div>
-        <span className="text-xs text-zinc-500 block -mt-1">Matches if CMO falls in zone A OR zone B</span>
 
         <label className="block text-sm">
           Reversal distance: <span className="text-zinc-100 font-medium">{reversalPoints}</span>
@@ -854,7 +806,6 @@ export default function Home() {
                 <span>EMA <span className="text-zinc-200">{backtest.emaLength}</span></span>
                 <span>CMO <span className="text-zinc-200">{backtest.cmoLength}</span></span>
                 <span>Zone A <span className="text-zinc-200">{backtest.zoneA?.[0]} → {backtest.zoneA?.[1]}</span></span>
-                <span>Zone B <span className="text-zinc-200">{backtest.zoneB?.[0]} → {backtest.zoneB?.[1]}</span></span>
                 <span>Reversal <span className="text-zinc-200">{backtest.reversalPoints} pts</span></span>
                 <span>Data <span className="text-zinc-200">{backtest.source}</span></span>
               </div>
