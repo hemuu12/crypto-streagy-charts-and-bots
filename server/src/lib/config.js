@@ -1,8 +1,11 @@
 export const PULLBACK_TIMEFRAME = "1h";
 export const PULLBACK_EMA_LENGTH = 200;
 export const PULLBACK_CMO_LENGTH = 18;
-export const PULLBACK_CMO_ZONE_LOW = -100;
-export const PULLBACK_CMO_ZONE_HIGH = -30;
+// Anchor only starts arming once CMO drops to or below this threshold.
+export const PULLBACK_CMO_ZONE_THRESHOLD = -80;
+
+// BUY fires once CMO rises this many points above the tracked anchor low.
+export const PULLBACK_CMO_REVERSAL_POINTS = 30;
 
 // 0 = no cooldown; every qualifying candle can open a trade. Entries are
 // still bounded because a new trade only opens once the previous one has hit
@@ -11,7 +14,7 @@ export const PULLBACK_COOLDOWN_BARS = 0;
 
 // Stop distance as a fraction of entry price. This defines 1R: the target is
 // RISK_REWARD_RATIO * this distance above entry.
-export const STOP_LOSS_PCT = 0.02;
+export const STOP_LOSS_PCT = 0.01;
 export const RISK_REWARD_RATIO = 2;
 
 // Fraction of capital lost when a trade is stopped out. Position size is

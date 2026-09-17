@@ -13,16 +13,6 @@ function todayUTC() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function parseZones(raw) {
-  if (!raw) return undefined;
-  if (Array.isArray(raw)) return raw;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-}
-
 function num(v) {
   return v === undefined || v === null || v === "" ? undefined : Number(v);
 }
@@ -34,9 +24,8 @@ function readStrategyParams(source) {
   return {
     cmoLength: num(source.cmoLength),
     emaLength: num(source.emaLength),
-    zoneLow: num(source.zoneLow),
-    zoneHigh: num(source.zoneHigh),
-    zones: parseZones(source.zones),
+    zoneThreshold: num(source.zoneThreshold),
+    reversalPoints: num(source.reversalPoints),
     cooldownBars: num(source.cooldownBars),
     riskPerTrade: num(source.riskPerTrade),
     initialCapital: num(source.initialCapital),
