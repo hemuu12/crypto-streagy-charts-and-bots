@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getPullbackSignals } from "../lib/signals.js";
-import { runPullbackBacktest } from "../lib/backtest.js";
+import { runPullbackBacktest, runPullbackBacktestRatios } from "../lib/backtest.js";
 import { loadBacktestRuns, loadPositions, loadLogLines, getBacktestKpis } from "../lib/store.js";
 import { runBotOnce } from "../lib/bot.js";
 import { BACKTEST_START } from "../lib/config.js";
@@ -75,6 +75,20 @@ router.get("/backtest", async (req, res) => {
     const { pair = "BTC/USDT", start = BACKTEST_START, end = todayUTC() } = req.query;
     const result = await runPullbackBacktest(pair, start, end, readStrategyParams(req.query));
     res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Runs the ratio-comparison view's three R:R backtests off a single
+// EMA/CMO signals pass instead of one HTTP round-trip (and one signals
+// pass) per ratio.
+router.get("/backtest/ratios", async (req, res) => {
+  try {
+    const { pair = "BTC/USDT", start = BACKTEST_START, end = todayUTC(), ratios = "1,2,3" } = req.query;
+    const ratioList = ratios.split(",").map(Number).filter((n) => Number.isFinite(n));
+    const results = await runPullbackBacktestRatios(pair, start, end, readStrategyParams(req.query), ratioList);
+    res.json({ results });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

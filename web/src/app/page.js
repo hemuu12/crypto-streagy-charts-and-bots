@@ -312,18 +312,16 @@ export default function Home() {
     try {
       const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}`;
 
-      const runs = await Promise.all(
-        RR_RATIOS.map(async (ratio) => {
-          const res = await fetch(
-            `${API_BASE}/api/backtest?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}&riskRewardRatio=${ratio}${shared}`
-          );
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-          return [ratio, data];
-        })
+      // One request: signals are computed once server-side and re-simulated
+      // per ratio, instead of firing one full backtest (and one EMA/CMO
+      // pass) per ratio as three separate round-trips.
+      const res = await fetch(
+        `${API_BASE}/api/backtest/ratios?pair=${encodeURIComponent(pair)}&start=${backtestStart}&end=${backtestEnd}&ratios=${RR_RATIOS.join(",")}${shared}`
       );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
 
-      const byRatio = Object.fromEntries(runs);
+      const byRatio = data.results;
       setBacktestByRatio(byRatio);
 
       const selected = byRatio[riskRewardRatio];
@@ -378,6 +376,36 @@ export default function Home() {
     <div className="flex min-h-screen bg-[#131722] text-[#d1d4dc]">
       <aside className="w-64 shrink-0 bg-[#1e222d] border-r border-[#2a2d3e] p-4 space-y-4">
         <h2 className="font-semibold text-sm uppercase tracking-wide text-zinc-400">Controls</h2>
+
+        <label className="block text-sm">
+          Pair
+          <select
+            className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
+            value={pair}
+            onChange={(e) => {
+              setPair(e.target.value);
+              setFocusDate(null);
+              setFocusedTradeKey(null);
+            }}
+          >
+            {PAIRS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          Candles: {candleLimit}
+          <input
+            type="range"
+            min={50}
+            max={1000}
+            step={50}
+            value={candleLimit}
+            onChange={(e) => setCandleLimit(Number(e.target.value))}
+            className="mt-1 w-full"
+          />
+        </label>
 
         <div className="text-xs text-zinc-500 bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1.5 leading-relaxed">
           Strategy: CMO-EMA Pullback (Long only)
@@ -475,36 +503,6 @@ export default function Home() {
           />
         </label>
 
-        <label className="block text-sm">
-          Pair
-          <select
-            className="mt-1 w-full bg-[#131722] border border-[#2a2d3e] rounded px-2 py-1"
-            value={pair}
-            onChange={(e) => {
-              setPair(e.target.value);
-              setFocusDate(null);
-              setFocusedTradeKey(null);
-            }}
-          >
-            {PAIRS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block text-sm">
-          Candles: {candleLimit}
-          <input
-            type="range"
-            min={50}
-            max={1000}
-            step={50}
-            value={candleLimit}
-            onChange={(e) => setCandleLimit(Number(e.target.value))}
-            className="mt-1 w-full"
-          />
-        </label>
-
         <hr className="border-[#2a2d3e]" />
 
         <label className="flex items-center gap-2 text-sm">
@@ -571,7 +569,22 @@ export default function Home() {
       </aside>
 
       <main className="flex-1 p-4 space-y-4 overflow-y-auto">
-        <h1 className="text-xl font-semibold">CMO-EMA Pullback Crypto Bot · Long only</h1>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <h1 className="text-xl font-semibold">CMO-EMA Pullback Crypto Bot · Long only</h1>
+          <select
+            className="bg-[#1e222d] border border-[#2a2d3e] rounded px-3 py-1.5 text-sm font-medium"
+            value={pair}
+            onChange={(e) => {
+              setPair(e.target.value);
+              setFocusDate(null);
+              setFocusedTradeKey(null);
+            }}
+          >
+            {PAIRS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
 
         {toast && <div className="bg-green-900/50 border border-green-700 rounded px-3 py-2 text-sm">{toast}</div>}
         {error && <div className="bg-red-900/50 border border-red-700 rounded px-3 py-2 text-sm">{error}</div>}
@@ -678,6 +691,7 @@ export default function Home() {
                 showBuySignals={showBuySignals}
                 showVolume={showVolume}
                 showChande={showChande}
+                cmoLength={cmoLength}
                 pair={pair}
                 timeframe="1h"
                 // Only draw the live forming candle in the live/latest view —

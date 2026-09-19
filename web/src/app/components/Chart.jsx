@@ -9,7 +9,7 @@ function money(value) {
 
 const HOUR_MS = 60 * 60 * 1000;
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, pair, timeframe, livePrice, now }) {
+export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, cmoLength = 4, pair, timeframe, livePrice, now }) {
   const containerRef = useRef(null);
   const tooltipRef = useRef(null);
   const chartRef = useRef(null);
@@ -86,7 +86,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
       priceLineVisible: false,
       lastValueVisible: false,
       priceScaleId: "chande",
-      title: "ChandeMO 4 (1H)",
+      title: `ChandeMO ${cmoLength} (1H)`,
     });
     chandeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0.02 } });
 
@@ -280,7 +280,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     const line = (key) =>
       candles.filter((c) => c[key] != null).map((c) => ({ time: Math.floor(c.time / 1000), value: c[key] }));
 
-    chandeSeries.applyOptions({ visible: showChande });
+    chandeSeries.applyOptions({ visible: showChande, title: `ChandeMO ${cmoLength} (1H)` });
 
     if (showChande) {
       chandeSeries.setData(line("cmo"));
@@ -293,7 +293,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     // clears `scrolledAway` once the range change lands.
     candleSeries.priceScale().applyOptions({ autoScale: true });
     chartRef.current?.timeScale().fitContent();
-  }, [candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande]);
+  }, [candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande, cmoLength]);
 
   // Draws/updates the currently-forming candle from live ticker prices, the
   // way TradingView keeps the rightmost bar live instead of only showing

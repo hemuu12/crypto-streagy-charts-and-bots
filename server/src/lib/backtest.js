@@ -23,26 +23,11 @@ function snapshot(c) {
   return { ema: round(c.ema, 2), cmo: round(c.cmo, 2) };
 }
 
-export async function runPullbackBacktest(symbol, start, end, options = {}) {
-  const {
-    cmoLength = PULLBACK_CMO_LENGTH,
-    emaLength = PULLBACK_EMA_LENGTH,
-    reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
-    cooldownBars = PULLBACK_COOLDOWN_BARS,
-    riskPerTrade = RISK_PER_TRADE,
-    initialCapital = INITIAL_CAPITAL,
-    stopLossPct = STOP_LOSS_PCT,
-    riskRewardRatio = RISK_REWARD_RATIO,
-  } = options;
-
-  const { candles: raw, source } = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
-  const evaluated = generatePullbackSignals(raw, {
-    cmoLength,
-    emaLength,
-    reversalPoints,
-    cooldownBars,
-  });
-
+// Runs the trade simulation over an already-evaluated candle series (signals
+// pre-computed). Split out from `runPullbackBacktest` so a ratio comparison
+// can compute signals once and re-simulate per `riskRewardRatio` instead of
+// re-running the EMA/CMO pass for each one.
+function simulateTrades(evaluated, { riskPerTrade, initialCapital, stopLossPct, riskRewardRatio }) {
   let capital = initialCapital;
   const trades = [];
   let open = null;
@@ -62,7 +47,7 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
       if (hitStop || hitTarget) {
         const exitPrice = hitStop ? open.stop : open.target;
         const pnl = (exitPrice - open.price) * open.qty;
-        capital += open.qty * exitPrice;
+        capital += pnl;
         trades.push({
           type: "SELL",
           date: new Date(c.time).toISOString(),
@@ -79,26 +64,27 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
     }
 
     if (!open && c.signal === 1) {
-      const stop = c.close * (1 - stopLossPct);
-      const riskPerUnit = c.close - stop;
+      const stop = c.open * (1 - stopLossPct);
+      const riskPerUnit = c.open - stop;
       // Size so that a stopped-out trade loses exactly `riskPerTrade` of
-      // current capital.
+      // current capital. Margin-style accounting: capital only moves by
+      // realized P&L (below), not by the trade's full notional cost — a
+      // tight stop relative to risk-per-trade implies leverage, same as a
+      // real futures position would use.
       const qty = riskPerUnit > 0 ? (capital * riskPerTrade) / riskPerUnit : 0;
-      const cost = qty * c.close;
 
-      if (qty > 0 && cost <= capital) {
-        capital -= cost;
+      if (qty > 0) {
         open = {
-          price: c.close,
+          price: c.open,
           qty,
           index: i,
           stop,
-          target: c.close + riskPerUnit * riskRewardRatio,
+          target: c.open + riskPerUnit * riskRewardRatio,
         };
         trades.push({
           type: "BUY",
           date: new Date(c.time).toISOString(),
-          price: c.close,
+          price: c.open,
           qty,
           stop,
           target: open.target,
@@ -114,7 +100,7 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
   if (open) {
     const last = evaluated[evaluated.length - 1];
     const pnl = (last.close - open.price) * open.qty;
-    capital += open.qty * last.close;
+    capital += pnl;
     trades.push({
       type: "SELL",
       date: new Date(last.time).toISOString(),
@@ -144,19 +130,10 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
   // Break-even win rate for this R:R — the hit rate needed to not lose money.
   const breakEvenWinRate = (1 / (1 + riskRewardRatio)) * 100;
 
-  const result = {
-    strategy: "pullback",
-    symbol,
-    start,
-    end,
-    cmoLength,
-    emaLength,
-    reversalPoints,
-    cooldownBars,
+  return {
     riskPerTrade,
     stopLossPct,
     riskRewardRatio,
-    source,
     initialCapital,
     finalCapital: round(capital, 2),
     totalPnl: round(totalPnl, 2),
@@ -184,7 +161,76 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
 
     trades,
   };
+}
+
+export async function runPullbackBacktest(symbol, start, end, options = {}) {
+  const {
+    cmoLength = PULLBACK_CMO_LENGTH,
+    emaLength = PULLBACK_EMA_LENGTH,
+    reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
+    cooldownBars = PULLBACK_COOLDOWN_BARS,
+    riskPerTrade = RISK_PER_TRADE,
+    initialCapital = INITIAL_CAPITAL,
+    stopLossPct = STOP_LOSS_PCT,
+    riskRewardRatio = RISK_REWARD_RATIO,
+  } = options;
+
+  const { candles: raw, source } = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
+  const evaluated = generatePullbackSignals(raw, { cmoLength, emaLength, reversalPoints, cooldownBars });
+  const sim = simulateTrades(evaluated, { riskPerTrade, initialCapital, stopLossPct, riskRewardRatio });
+
+  const result = {
+    strategy: "pullback",
+    symbol,
+    start,
+    end,
+    cmoLength,
+    emaLength,
+    reversalPoints,
+    cooldownBars,
+    source,
+    ...sim,
+  };
 
   await saveBacktestRun(result);
   return result;
+}
+
+// Same entries and stop (signals + EMA/CMO computed once) across several
+// risk:reward ratios, differing only in target distance — avoids re-running
+// the indicator pass once per ratio the way three separate calls would.
+export async function runPullbackBacktestRatios(symbol, start, end, options = {}, ratios = [1, 2, 3]) {
+  const {
+    cmoLength = PULLBACK_CMO_LENGTH,
+    emaLength = PULLBACK_EMA_LENGTH,
+    reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
+    cooldownBars = PULLBACK_COOLDOWN_BARS,
+    riskPerTrade = RISK_PER_TRADE,
+    initialCapital = INITIAL_CAPITAL,
+    stopLossPct = STOP_LOSS_PCT,
+  } = options;
+
+  const { candles: raw, source } = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
+  const evaluated = generatePullbackSignals(raw, { cmoLength, emaLength, reversalPoints, cooldownBars });
+
+  const results = {};
+  for (const ratio of ratios) {
+    const sim = simulateTrades(evaluated, { riskPerTrade, initialCapital, stopLossPct, riskRewardRatio: ratio });
+    const result = {
+      strategy: "pullback",
+      symbol,
+      start,
+      end,
+      cmoLength,
+      emaLength,
+      reversalPoints,
+      cooldownBars,
+      source,
+      ...sim,
+    };
+    await saveBacktestRun(result);
+    results[ratio] = result;
+  }
+
+  return results;
 }

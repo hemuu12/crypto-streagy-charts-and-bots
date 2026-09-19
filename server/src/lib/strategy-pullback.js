@@ -32,9 +32,9 @@ export function generatePullbackSignals(
     cooldownBars = PULLBACK_COOLDOWN_BARS,
   }
 ) {
-  const closes = candles.map((c) => c.close);
-  const emaSeries = ema(closes, emaLength);
-  const cmoSeries = chandeMO(closes, cmoLength);
+  const opens = candles.map((c) => c.open);
+  const emaSeries = ema(opens, emaLength);
+  const cmoSeries = chandeMO(opens, cmoLength);
 
   const withIndicators = candles.map((c, i) => ({
     ...c,
@@ -53,7 +53,7 @@ export function generatePullbackSignals(
       anchor = anchor == null ? cmo : Math.min(anchor, cmo);
     }
 
-    const priceAboveEma = c.ema != null && c.close > c.ema;
+    const priceAboveEma = c.ema != null && c.open > c.ema;
     const reversalArmed = anchor != null && cmo != null;
     const reversalFromLow = reversalArmed && cmo - anchor >= reversalPoints;
     const checks = { priceAboveEma, reversalFromLow };
@@ -65,7 +65,7 @@ export function generatePullbackSignals(
     }
 
     if (Object.values(checks).every(Boolean)) {
-      entryPrice = c.close;
+      entryPrice = c.open;
       lastEntryIndex = i;
       anchor = null; // wait for the next negative CMO pullback to re-arm
       return { ...c, signal: 1, reason: "cmo_anchor_reversal", checks, inPosition: true, entryPrice };
