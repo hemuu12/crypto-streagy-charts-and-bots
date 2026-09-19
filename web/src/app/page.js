@@ -670,25 +670,32 @@ export default function Home() {
 
         <div className="relative">
           {candles.length > 0 && (
-            <Chart
-              candles={candles}
-              showEmaFast={showEmaFast}
-              showEmaSlow={false}
-              showBuySignals={showBuySignals}
-              showVolume={showVolume}
-              showChande={showChande}
-              pair={pair}
-              timeframe="1h"
-              // Only draw the live forming candle in the live/latest view —
-              // when viewing a past trade's window (`focusDate` set), the
-              // chart shows a fixed slice of history and shouldn't move.
-              livePrice={focusDate ? null : livePrice_}
-              now={now}
-            />
+            <div className={loading ? "blur-sm transition-[filter] duration-150 pointer-events-none" : "transition-[filter] duration-150"}>
+              <Chart
+                candles={candles}
+                showEmaFast={showEmaFast}
+                showEmaSlow={false}
+                showBuySignals={showBuySignals}
+                showVolume={showVolume}
+                showChande={showChande}
+                pair={pair}
+                timeframe="1h"
+                // Only draw the live forming candle in the live/latest view —
+                // when viewing a past trade's window (`focusDate` set), the
+                // chart shows a fixed slice of history and shouldn't move.
+                livePrice={focusDate ? null : livePrice_}
+                now={now}
+              />
+            </div>
           )}
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[#131722]/60 backdrop-blur-[1px] rounded">
-              <div className="flex items-center gap-2 text-sm text-zinc-300 bg-[#1e222d] border border-[#2a2d3e] rounded px-3 py-2">
+          {loading && candles.length === 0 && (
+            <div className="h-[520px] w-full rounded bg-[#1a1e29] overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.4s_infinite] bg-gradient-to-r from-transparent via-[#252a38] to-transparent" />
+            </div>
+          )}
+          {loading && candles.length > 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="flex items-center gap-2 text-sm text-zinc-300 bg-[#1e222d]/95 border border-[#2a2d3e] rounded px-3 py-2 shadow-lg">
                 <span className="h-3.5 w-3.5 rounded-full border-2 border-zinc-500 border-t-blue-500 animate-spin" />
                 Loading {pair} 1h...
               </div>

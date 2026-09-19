@@ -1,6 +1,8 @@
 import { getPullbackSignals } from "./signals.js";
 import { loadPositions, savePosition, log } from "./store.js";
 import { PAIRS, INITIAL_CAPITAL, RISK_PER_TRADE } from "./config.js";
+import { sendTelegramMessage } from "./telegram.js";
+import { sendDesktopNotification } from "./desktop-notify.js";
 
 export async function runBotOnce({ paper = true, pairs = PAIRS } = {}) {
   const positions = await loadPositions();
@@ -20,6 +22,21 @@ export async function runBotOnce({ paper = true, pairs = PAIRS } = {}) {
         positions[symbol] = pos;
         await savePosition(symbol, pos);
         await log(`BOUGHT ${symbol} | qty=${qty.toFixed(6)} | entry=${price} | ema=${last.ema?.toFixed(2)} | cmo=${last.cmo?.toFixed(2)}`);
+
+        const alertText =
+          `🟢 <b>BUY SIGNAL</b>\n` +
+          `Coin: <b>${symbol}</b>\n` +
+          `Price: ${price}\n` +
+          `Entry: ${price}\n` +
+          `CMO: ${last.cmo?.toFixed(2)}\n` +
+          `EMA: ${last.ema?.toFixed(2)}\n` +
+          `Qty: ${qty.toFixed(6)}\n` +
+          `Time: ${new Date().toLocaleString("en-US", { timeZone: "UTC" })} UTC`;
+        sendTelegramMessage(alertText);
+        sendDesktopNotification(
+          `BUY ${symbol}`,
+          `Price: ${price} | Entry: ${price} | CMO: ${last.cmo?.toFixed(2)}`
+        );
       } else {
         await log(`${symbol} | signal=${last.signal} | price=${price} | ema=${last.ema?.toFixed(2)} | cmo=${last.cmo?.toFixed(2)} | inPosition=${!!existing}`);
       }

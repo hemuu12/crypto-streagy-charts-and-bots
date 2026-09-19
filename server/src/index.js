@@ -5,6 +5,7 @@ import { createServer } from "http";
 import { connectDb } from "./lib/db.js";
 import { attachStream } from "./ws/stream.js";
 import apiRouter from "./routes/api.js";
+import { runBotOnce } from "./lib/bot.js";
 
 async function main() {
   await connectDb();
@@ -45,6 +46,15 @@ async function main() {
   server.listen(port, () => {
     console.log(`crypto-bot-server listening on :${port} (REST /api, WebSocket /ws)`);
   });
+
+  // Auto-poll every pair for a fresh BUY signal so alerts (Telegram/desktop)
+  // fire live without needing the "Run Bot" button clicked in the UI.
+  const BOT_POLL_MS = 30 * 1000;
+  runBotOnce().catch((e) => console.error("auto bot check failed:", e.message));
+  const botInterval = setInterval(() => {
+    runBotOnce().catch((e) => console.error("auto bot check failed:", e.message));
+  }, BOT_POLL_MS);
+  botInterval.unref();
 
   // Release the port on shutdown. Without this a dev-reload can leave the old
   // process holding :PORT, and the replacement then fails with EADDRINUSE.
