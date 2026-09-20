@@ -30,6 +30,37 @@ export async function removePosition(symbol) {
   await db.collection("positions").deleteOne({ symbol });
 }
 
+// Atomically claim a signal candle for alerting. Returns true exactly once
+// per (symbol, candleTime) across restarts and concurrent pollers — the
+// unique index makes the second insert fail rather than double-alert.
+export async function claimSignal(symbol, candleTime) {
+  const db = getDb();
+  try {
+    await db.collection("alerted_signals").insertOne({
+      symbol,
+      candleTime,
+      alertedAt: new Date(),
+    });
+    return true;
+  } catch (e) {
+    if (e?.code === 11000) return false; // already alerted
+    throw e;
+  }
+}
+
+// Newest signal candle already alerted for a symbol, so the bot can backfill
+// everything after it instead of trusting a fixed look-back.
+export async function lastAlertedTime(symbol) {
+  const db = getDb();
+  const row = await db
+    .collection("alerted_signals")
+    .find({ symbol })
+    .sort({ candleTime: -1 })
+    .limit(1)
+    .next();
+  return row?.candleTime ?? null;
+}
+
 export async function log(message) {
   const db = getDb();
   const createdAt = new Date();

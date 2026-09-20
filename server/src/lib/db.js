@@ -13,6 +13,10 @@ export async function connectDb() {
   await db.collection("positions").createIndex({ symbol: 1 }, { unique: true });
   await db.collection("bot_log").createIndex({ createdAt: -1 });
   await db.collection("backtest_runs").createIndex({ runAt: -1 });
+  // Unique on (symbol, candleTime) so claiming a signal for alerting is an
+  // atomic insert: concurrent or restarted pollers race on the DB, not on
+  // in-process state, and a duplicate insert simply fails.
+  await db.collection("alerted_signals").createIndex({ symbol: 1, candleTime: 1 }, { unique: true });
   return db;
 }
 

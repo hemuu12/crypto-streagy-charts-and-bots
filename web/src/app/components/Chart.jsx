@@ -25,6 +25,26 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
   const lastClosedRef = useRef(null);
   const formingCandleRef = useRef(null);
 
+  // Long Position drawings (TradingView-style): each is an
+  // { id, startTime, endTime, entry, stopLoss, takeProfit, qty } saved per
+  // pair — startTime/endTime are chart-time seconds marking the box's left
+  // and right edges. Rendered entirely as HTML overlay (shaded zones, an
+  // entry line, and six corner/edge handles) since lightweight-charts price
+  // lines can't be bounded to a time range or shaded.
+  const [drawings, setDrawings] = useState([]);
+  const drawingsRef = useRef(drawings); // mirrors `drawings` so mouseup can persist without a stale closure
+  const [placing, setPlacing] = useState(false);
+  // While dragging: { id, row: 'target'|'entry'|'stopLoss', col: 'left'|'right'|'move' }.
+  // row picks which price the drag edits; col picks which time edge (or,
+  // for 'move', both — dragging the body translates the whole box).
+  const dragRef = useRef(null);
+  const dragStartRef = useRef(null); // { mouseX, mouseY, drawing } snapshot taken on mousedown, for 'move'
+  // Bumped whenever the overlay needs to re-read pixel positions from the
+  // chart (pan/zoom/resize, or a drawing changing) — a plain counter instead
+  // of storing the computed positions themselves, so there's no state <->
+  // effect feedback loop between "positions changed" and "recompute positions".
+  const [, bumpOverlayTick] = useState(0);
+
   // Mount chart + series once
   useEffect(() => {
     if (!containerRef.current) return;
@@ -185,6 +205,42 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     };
   }, []);
 
+  function drawingsKey(p) {
+    return `longPositions:${p}`;
+  }
+
+  function readDrawings(p) {
+    try {
+      const raw = localStorage.getItem(drawingsKey(p));
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Long Position drawings live in localStorage, keyed per pair — per
+  // browser rather than shared across devices, but needs no backend.
+  useEffect(() => {
+    setDrawings(readDrawings(pair));
+  }, [pair]);
+
+  function persistAll(next) {
+    try {
+      localStorage.setItem(drawingsKey(pair), JSON.stringify(next));
+    } catch {
+      // Storage can throw in a private window or when quota is exceeded —
+      // the drawing still works for this session, it just won't survive reload.
+    }
+  }
+
+  function deleteDrawingById(id) {
+    setDrawings((prev) => {
+      const next = prev.filter((d) => d.id !== id);
+      persistAll(next);
+      return next;
+    });
+  }
+
   // Update watermark + volume margin when options change
   useEffect(() => {
     const chart = chartRef.current;
@@ -337,13 +393,346 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     candleSeries.update(bar);
   }, [livePrice, now]);
 
+  // Computes one drawing's on-screen pixel rect from its prices/times.
+  // Called from render (via `overlayGeometryFor`, below) rather than stored
+  // in state — the chart's own pan/zoom isn't React state, so there's no
+  // single dependency array that would ever be "complete" for a memo; a
+  // plain tick counter (bumped by the subscriptions below) just forces a
+  // re-render, and this recomputes fresh each time from the live chart refs.
+  function overlayGeometryFor(d) {
+    const { candleSeries } = seriesRef.current;
+    const chart = chartRef.current;
+    if (!candleSeries || !chart || !candlesByTimeRef.current.size) return null;
+    try {
+      const timeScale = chart.timeScale();
+      return {
+        left: timeScale.timeToCoordinate(d.startTime),
+        right: timeScale.timeToCoordinate(d.endTime),
+        targetY: candleSeries.priceToCoordinate(d.takeProfit),
+        entryY: candleSeries.priceToCoordinate(d.entry),
+        stopY: candleSeries.priceToCoordinate(d.stopLoss),
+      };
+    } catch {
+      // Can throw (not just return null) before the chart has finished
+      // laying out a price/time scale, e.g. right after a pair switch.
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    drawingsRef.current = drawings;
+  }, [drawings]);
+
+  // Re-render the overlay on pan/zoom/resize/data changes — the underlying
+  // prices/times haven't changed, only where they land on screen.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const bump = () => bumpOverlayTick((n) => n + 1);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(bump);
+    window.addEventListener("resize", bump);
+    return () => {
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(bump);
+      window.removeEventListener("resize", bump);
+    };
+  }, []);
+
+  function priceAtY(y) {
+    const { candleSeries } = seriesRef.current;
+    return candleSeries?.coordinateToPrice(y) ?? null;
+  }
+
+  function timeAtX(x) {
+    return chartRef.current?.timeScale().coordinateToTime(x) ?? null;
+  }
+
+  function persistDrawings(next) {
+    setDrawings(next);
+    persistAll(next);
+  }
+
+  // Freezes/unfreezes the chart's own pan+zoom so dragging a position box
+  // moves only the box, not the viewport underneath it.
+  function setChartInteractive(enabled) {
+    chartRef.current?.applyOptions({
+      handleScroll: enabled,
+      handleScale: enabled,
+    });
+  }
+
+  function handleContainerMouseDown(e) {
+    if (e.target.closest("button")) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (placing) {
+      const price = priceAtY(y);
+      const startTime = timeAtX(x);
+      if (price == null || startTime == null) return;
+      const barSeconds = HOUR_MS / 1000;
+      const entry = price;
+      const stopLoss = entry * 0.99;
+      const takeProfit = entry + (entry - stopLoss) * 2;
+      const tmp = {
+        id: `pos-${Date.now()}`,
+        startTime,
+        endTime: startTime + barSeconds * 40,
+        entry,
+        stopLoss,
+        takeProfit,
+        qty: 1,
+      };
+      persistDrawings([...drawings, tmp]);
+      setPlacing(false);
+      return;
+    }
+
+    // Hit-test the six handles (row x col) first, then the box body (for a
+    // whole-box move), within a small tolerance so a precise click isn't
+    // required.
+    const HIT_PX = 8;
+    for (const d of drawings) {
+      const g = overlayGeometryFor(d);
+      if (!g || g.left == null || g.right == null) continue;
+
+      for (const [row, rowY] of [["target", g.targetY], ["entry", g.entryY], ["stopLoss", g.stopY]]) {
+        if (rowY == null) continue;
+        for (const [col, colX] of [["left", g.left], ["right", g.right]]) {
+          if (Math.abs(colX - x) <= HIT_PX && Math.abs(rowY - y) <= HIT_PX) {
+            dragRef.current = { id: d.id, row, col };
+            setChartInteractive(false);
+            return;
+          }
+        }
+      }
+
+      const withinX = x >= g.left - HIT_PX && x <= g.right + HIT_PX;
+      const withinY = y >= Math.min(g.targetY, g.stopY) - HIT_PX && y <= Math.max(g.targetY, g.stopY) + HIT_PX;
+      if (withinX && withinY) {
+        dragRef.current = { id: d.id, row: "move", col: "move" };
+        dragStartRef.current = { mouseX: x, mouseY: y, drawing: d };
+        setChartInteractive(false);
+        return;
+      }
+    }
+  }
+
+  function handleContainerMouseMove(e) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (drag.row === "move") {
+      const start = dragStartRef.current;
+      if (!start) return;
+      const dPrice = (priceAtY(y) ?? 0) - (priceAtY(start.mouseY) ?? 0);
+      const dTime = (timeAtX(x) ?? 0) - (timeAtX(start.mouseX) ?? 0);
+      setDrawings((prev) =>
+        prev.map((d) =>
+          d.id === drag.id
+            ? {
+                ...d,
+                entry: start.drawing.entry + dPrice,
+                stopLoss: start.drawing.stopLoss + dPrice,
+                takeProfit: start.drawing.takeProfit + dPrice,
+                startTime: start.drawing.startTime + dTime,
+                endTime: start.drawing.endTime + dTime,
+              }
+            : d
+        )
+      );
+      return;
+    }
+
+    const priceField = drag.row === "target" ? "takeProfit" : drag.row === "entry" ? "entry" : "stopLoss";
+    const price = priceAtY(y);
+    const time = timeAtX(x);
+
+    setDrawings((prev) =>
+      prev.map((d) => {
+        if (d.id !== drag.id) return d;
+        const next = { ...d };
+        if (price != null) next[priceField] = price;
+        if (time != null) {
+          if (drag.col === "left") next.startTime = time;
+          else if (drag.col === "right") next.endTime = time;
+        }
+        return next;
+      })
+    );
+  }
+
+  function handleContainerMouseUp() {
+    if (dragRef.current) {
+      persistAll(drawingsRef.current);
+      setChartInteractive(true);
+    }
+    dragRef.current = null;
+    dragStartRef.current = null;
+  }
+
   function jumpToLatest() {
     chartRef.current?.timeScale().fitContent();
   }
 
   return (
-    <div className="relative w-full">
-      <div ref={containerRef} className="w-full" />
+    // Drag handlers live on the wrapper, not the chart container: the overlay
+    // boxes render as siblings above the canvas, so a mousedown on a handle
+    // would never reach a listener bound to the container itself.
+    <div
+      className="relative w-full"
+      onMouseDown={handleContainerMouseDown}
+      onMouseMove={handleContainerMouseMove}
+      onMouseUp={handleContainerMouseUp}
+      onMouseLeave={handleContainerMouseUp}
+    >
+      <button
+        type="button"
+        onClick={() => setPlacing((p) => !p)}
+        title="Click, then click the chart to place a long position"
+        className={`absolute top-2 left-2 z-20 rounded border px-2.5 py-1 text-xs font-medium shadow-lg ${
+          placing
+            ? "border-emerald-500 bg-emerald-900/60 text-emerald-300"
+            : "border-[#2a2d3e] bg-[#1e222d]/95 text-zinc-200 hover:bg-[#262b3a] hover:border-zinc-600"
+        }`}
+      >
+        ↗ Long Position{placing ? " · click chart" : ""}
+      </button>
+      <div ref={containerRef} className={`w-full ${placing ? "cursor-crosshair" : ""}`} />
+      {drawings.map((d) => {
+        const g = overlayGeometryFor(d);
+        if (!g || g.left == null || g.right == null || g.entryY == null || g.stopY == null || g.targetY == null) {
+          return null;
+        }
+
+        const left = Math.min(g.left, g.right);
+        const width = Math.abs(g.right - g.left);
+        const risk = Math.abs(d.entry - d.stopLoss);
+        const reward = Math.abs(d.takeProfit - d.entry);
+        const rr = risk > 0 ? (reward / risk).toFixed(2) : "—";
+        const lossPct = d.entry ? (-risk / d.entry) * 100 : 0;
+        const gainPct = d.entry ? (reward / d.entry) * 100 : 0;
+        const qty = d.qty ?? 0;
+        const markPrice = livePrice ?? d.entry;
+        const openPnl = qty * (markPrice - d.entry);
+
+        const handleBox = (x, y) => ({
+          left: `${x - 4}px`,
+          top: `${y - 4}px`,
+          width: "8px",
+          height: "8px",
+          border: "2px solid #2962ff",
+          background: "#131722",
+          borderRadius: "2px",
+          cursor: "nwse-resize",
+        });
+
+        return (
+          <div key={d.id} className="absolute inset-0 z-10 pointer-events-none">
+            {/* Target zone: entry -> target */}
+            <div
+              className="absolute pointer-events-auto"
+              style={{
+                left: `${left}px`,
+                width: `${width}px`,
+                top: `${Math.min(g.targetY, g.entryY)}px`,
+                height: `${Math.abs(g.entryY - g.targetY)}px`,
+                background: "rgba(38,166,154,0.20)",
+                borderTop: "1px dashed #26a69a",
+                cursor: "move",
+              }}
+            />
+            {/* Stop zone: entry -> stop */}
+            <div
+              className="absolute pointer-events-auto"
+              style={{
+                left: `${left}px`,
+                width: `${width}px`,
+                top: `${Math.min(g.entryY, g.stopY)}px`,
+                height: `${Math.abs(g.stopY - g.entryY)}px`,
+                background: "rgba(239,83,80,0.20)",
+                borderBottom: "1px dashed #ef5350",
+                cursor: "move",
+              }}
+            />
+            {/* Entry line */}
+            <div
+              className="absolute pointer-events-auto"
+              style={{
+                left: `${left}px`,
+                width: `${width}px`,
+                top: `${g.entryY}px`,
+                height: "0px",
+                borderTop: "2px solid #2962ff",
+                cursor: "ns-resize",
+              }}
+            />
+
+            {[
+              [left, g.targetY],
+              [left + width, g.targetY],
+              [left, g.entryY],
+              [left + width, g.entryY],
+              [left, g.stopY],
+              [left + width, g.stopY],
+            ].map(([hx, hy], i) => (
+              <div key={i} className="absolute pointer-events-auto" style={handleBox(hx, hy)} />
+            ))}
+
+            <div
+              className="absolute pointer-events-auto rounded px-2 py-0.5 text-[11px] font-medium text-white whitespace-nowrap"
+              style={{
+                left: `${left + width / 2}px`,
+                top: `${g.targetY - 8}px`,
+                transform: "translate(-50%, -100%)",
+                background: "#089981",
+              }}
+            >
+              Target: {money(d.takeProfit)} ({gainPct.toFixed(2)}%), Amount: {qty}
+            </div>
+
+            <div
+              className="absolute pointer-events-auto rounded px-2 py-0.5 text-[11px] font-semibold text-white text-center leading-tight"
+              style={{
+                left: `${left + width / 2}px`,
+                top: `${g.entryY}px`,
+                transform: "translate(-50%, -50%)",
+                background: openPnl >= 0 ? "#089981" : "#f23645",
+              }}
+            >
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span>
+                  Open PnL: {openPnl.toFixed(2)}, Qty: {qty}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => deleteDrawingById(d.id)}
+                  title="Delete this position"
+                  className="text-white/70 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="whitespace-nowrap">Risk/reward ratio: {rr}</div>
+            </div>
+
+            <div
+              className="absolute pointer-events-auto rounded px-2 py-0.5 text-[11px] font-medium text-white whitespace-nowrap"
+              style={{
+                left: `${left + width / 2}px`,
+                top: `${g.stopY + 8}px`,
+                transform: "translateX(-50%)",
+                background: "#f23645",
+              }}
+            >
+              Stop: {money(d.stopLoss)} ({lossPct.toFixed(2)}%), Amount: {qty}
+            </div>
+          </div>
+        );
+      })}
       <div
         ref={tooltipRef}
         className="absolute hidden pointer-events-none z-10 rounded border border-[#2a2d3e] bg-[#1e222d]/95 px-2.5 py-2 text-xs text-zinc-200 shadow-lg whitespace-nowrap"
