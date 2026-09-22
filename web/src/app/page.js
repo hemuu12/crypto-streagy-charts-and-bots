@@ -74,7 +74,7 @@ const REASON_LABELS = {
 export default function Home() {
   const [pair, setPair] = useState("BTC/USDT");
   const [candleLimit, setCandleLimit] = useState(1000);
-  const [cmoLength, setCmoLength] = useState(18);
+  const [cmoLength, setCmoLength] = useState(6);
   const [emaLength, setEmaLength] = useState(200);
   const [reversalPoints, setReversalPoints] = useState(30);
   const [cooldownBars, setCooldownBars] = useState(0);
