@@ -157,7 +157,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
         ${c.volume != null ? row("Volume", c.volume.toLocaleString("en-US", { maximumFractionDigits: 2 })) : ""}
         <div class="my-1 border-t border-[#2a2d3e]"></div>
         ${row("EMA", money(c.ema))}
-        ${row("CMO", c.cmo != null ? c.cmo.toFixed(1) : "—", c.cmo != null ? (c.cmo >= 0 ? "text-green-400" : "text-red-400") : "")}
+        ${row("CMO", c.cmo != null ? c.cmo.toFixed(1) : "—")}
         ${row("Entry", money(c.entryPrice), "text-green-400")}
       `;
       tooltip.style.display = "block";

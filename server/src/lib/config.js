@@ -1,6 +1,6 @@
 export const PULLBACK_TIMEFRAME = "1h";
 export const PULLBACK_EMA_LENGTH = 200;
-export const PULLBACK_CMO_LENGTH = 6;
+export const PULLBACK_CMO_LENGTH = 18;
 // BUY fires once CMO rises this many points above the tracked anchor low.
 export const PULLBACK_CMO_REVERSAL_POINTS = 30;
 
