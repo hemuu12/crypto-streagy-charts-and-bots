@@ -35,11 +35,12 @@ function readStrategyParams(source) {
 
 router.get("/pullback-signals", async (req, res) => {
   try {
-    const { pair = "BTC/USDT", limit, around } = req.query;
+    const { pair = "BTC/USDT", limit, around, displayTimeframe } = req.query;
     const result = await getPullbackSignals({
       pair,
       limit: num(limit),
       around,
+      displayTimeframe,
       ...readStrategyParams(req.query),
     });
     res.json(result);

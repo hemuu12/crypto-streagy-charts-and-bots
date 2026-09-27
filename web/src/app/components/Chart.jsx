@@ -9,7 +9,7 @@ function money(value) {
 
 const HOUR_MS = 60 * 60 * 1000;
 
-export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, cmoLength = 4, pair, timeframe, livePrice, now }) {
+export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignals, showVolume, showChande = false, cmoLength = 4, pair, timeframe, timeframeMs = HOUR_MS, livePrice, now }) {
   const containerRef = useRef(null);
   const tooltipRef = useRef(null);
   const chartRef = useRef(null);
@@ -360,12 +360,12 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
     const lastClosed = lastClosedRef.current;
     if (!candleSeries || !lastClosed || livePrice == null) return;
 
-    const barTimeMs = lastClosed.time + HOUR_MS;
+    const barTimeMs = lastClosed.time + timeframeMs;
 
     // Once real time has moved past this bar's own close, it's stale — a
     // parent refetch is expected to bring it in as real closed data and reset
     // lastClosedRef. Stop patching it here to avoid drawing the wrong hour.
-    if (now != null && now >= barTimeMs + HOUR_MS) return;
+    if (now != null && now >= barTimeMs + timeframeMs) return;
 
     const barTimeSec = Math.floor(barTimeMs / 1000);
 
@@ -391,7 +391,7 @@ export default function Chart({ candles, showEmaFast, showEmaSlow, showBuySignal
 
     formingCandleRef.current = bar;
     candleSeries.update(bar);
-  }, [livePrice, now]);
+  }, [livePrice, now, timeframeMs]);
 
   // Computes one drawing's on-screen pixel rect from its prices/times.
   // Called from render (via `overlayGeometryFor`, below) rather than stored

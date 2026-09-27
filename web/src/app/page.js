@@ -54,6 +54,20 @@ function todayUTC() {
 
 const PAIRS = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "AVAX/USDT", "XRP/USDT", "ADA/USDT"];
 
+// Chart display timeframes. The strategy (EMA/CMO/signals) always computes
+// on 1h — these only change what candles are drawn; picking one just asks
+// the server to re-bucket the same 1h-computed signal onto finer candles.
+const DISPLAY_TIMEFRAMES = [
+  { value: "15m", label: "15m" },
+  { value: "30m", label: "30m" },
+  { value: "1h", label: "1h" },
+];
+const DISPLAY_TIMEFRAME_MS = {
+  "15m": 15 * 60 * 1000,
+  "30m": 30 * 60 * 1000,
+  "1h": 60 * 60 * 1000,
+};
+
 const RR_RATIOS = [1, 2, 3];
 
 const REASON_STYLES = {
@@ -73,6 +87,7 @@ const REASON_LABELS = {
 
 export default function Home() {
   const [pair, setPair] = useState("BTC/USDT");
+  const [displayTimeframe, setDisplayTimeframe] = useState("1h");
   const [candleLimit, setCandleLimit] = useState(1000);
   const [cmoLength, setCmoLength] = useState(18);
   const [emaLength, setEmaLength] = useState(200);
@@ -134,7 +149,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}`;
+      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&displayTimeframe=${displayTimeframe}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -145,7 +160,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, candleLimit, focusDate, cmoLength, emaLength, reversalPoints, cooldownBars]);
+  }, [pair, candleLimit, focusDate, cmoLength, emaLength, reversalPoints, cooldownBars, displayTimeframe]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/positions`);
@@ -392,6 +407,29 @@ export default function Home() {
               <option key={p} value={p}>{p}</option>
             ))}
           </select>
+        </label>
+
+        <label className="block text-sm">
+          Chart Timeframe
+          <div className="mt-1 flex gap-1">
+            {DISPLAY_TIMEFRAMES.map((tf) => (
+              <button
+                key={tf.value}
+                type="button"
+                onClick={() => setDisplayTimeframe(tf.value)}
+                className={`flex-1 rounded px-2 py-1 text-xs border ${
+                  displayTimeframe === tf.value
+                    ? "bg-emerald-600/30 border-emerald-500 text-emerald-300"
+                    : "bg-[#131722] border-[#2a2d3e] text-zinc-400 hover:border-zinc-600"
+                }`}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
+          <span className="block text-[11px] text-zinc-500">
+            Candles only — strategy always computes on 1H
+          </span>
         </label>
 
         <label className="block text-sm">
@@ -693,7 +731,8 @@ export default function Home() {
                 showChande={showChande}
                 cmoLength={cmoLength}
                 pair={pair}
-                timeframe="1h"
+                timeframe={displayTimeframe}
+                timeframeMs={DISPLAY_TIMEFRAME_MS[displayTimeframe]}
                 // Only draw the live forming candle in the live/latest view —
                 // when viewing a past trade's window (`focusDate` set), the
                 // chart shows a fixed slice of history and shouldn't move.
@@ -711,7 +750,7 @@ export default function Home() {
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="flex items-center gap-2 text-sm text-zinc-300 bg-[#1e222d]/95 border border-[#2a2d3e] rounded px-3 py-2 shadow-lg">
                 <span className="h-3.5 w-3.5 rounded-full border-2 border-zinc-500 border-t-blue-500 animate-spin" />
-                Loading {pair} 1h...
+                Loading {pair} {displayTimeframe}...
               </div>
             </div>
           )}
