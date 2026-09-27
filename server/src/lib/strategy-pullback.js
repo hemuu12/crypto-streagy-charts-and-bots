@@ -56,7 +56,7 @@ export function generatePullbackSignals(
     const priceAboveEma = c.ema != null && c.open > c.ema;
     const reversalArmed = anchor != null && cmo != null;
     const reversalFromLow = reversalArmed && cmo - anchor >= reversalPoints;
-    const outsideCmoBand = cmo != null && !(cmo >= -10 && cmo <= 100);
+    const outsideCmoBand = cmo != null && !(cmo >= -15 && cmo <= 100);
     const checks = { priceAboveEma, reversalFromLow, outsideCmoBand };
 
     const inCooldown = lastEntryIndex != null && i - lastEntryIndex < cooldownBars;
