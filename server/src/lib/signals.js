@@ -6,6 +6,7 @@ import {
   PULLBACK_EMA_LENGTH,
   PULLBACK_CMO_REVERSAL_POINTS,
   PULLBACK_COOLDOWN_BARS,
+  PULLBACK_CMO_MIN,
 } from "./config.js";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -66,6 +67,7 @@ export async function getPullbackSignals({
   emaLength = PULLBACK_EMA_LENGTH,
   reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
   cooldownBars = PULLBACK_COOLDOWN_BARS,
+  cmoMin = PULLBACK_CMO_MIN,
   displayTimeframe = PULLBACK_TIMEFRAME,
 }) {
   const timeframeMs = DISPLAY_TIMEFRAME_MS[displayTimeframe] ?? HOUR_MS;
@@ -104,6 +106,7 @@ export async function getPullbackSignals({
     emaLength,
     reversalPoints,
     cooldownBars,
+    cmoMin,
   });
 
   let trimmed;

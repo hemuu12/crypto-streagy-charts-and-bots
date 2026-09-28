@@ -26,6 +26,7 @@ function readStrategyParams(source) {
     emaLength: num(source.emaLength),
     reversalPoints: num(source.reversalPoints),
     cooldownBars: num(source.cooldownBars),
+    cmoMin: num(source.cmoMin),
     riskPerTrade: num(source.riskPerTrade),
     initialCapital: num(source.initialCapital),
     stopLossPct: num(source.stopLossPct),

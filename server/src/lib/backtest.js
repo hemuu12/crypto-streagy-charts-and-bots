@@ -9,6 +9,7 @@ import {
   PULLBACK_EMA_LENGTH,
   PULLBACK_CMO_REVERSAL_POINTS,
   PULLBACK_COOLDOWN_BARS,
+  PULLBACK_CMO_MIN,
   STOP_LOSS_PCT,
   RISK_REWARD_RATIO,
 } from "./config.js";
@@ -169,6 +170,7 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
     emaLength = PULLBACK_EMA_LENGTH,
     reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
+    cmoMin = PULLBACK_CMO_MIN,
     riskPerTrade = RISK_PER_TRADE,
     initialCapital = INITIAL_CAPITAL,
     stopLossPct = STOP_LOSS_PCT,
@@ -176,7 +178,7 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
   } = options;
 
   const { candles: raw, source } = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
-  const evaluated = generatePullbackSignals(raw, { cmoLength, emaLength, reversalPoints, cooldownBars });
+  const evaluated = generatePullbackSignals(raw, { cmoLength, emaLength, reversalPoints, cooldownBars, cmoMin });
   const sim = simulateTrades(evaluated, { riskPerTrade, initialCapital, stopLossPct, riskRewardRatio });
 
   const result = {
@@ -188,6 +190,7 @@ export async function runPullbackBacktest(symbol, start, end, options = {}) {
     emaLength,
     reversalPoints,
     cooldownBars,
+    cmoMin,
     source,
     ...sim,
   };
@@ -205,13 +208,14 @@ export async function runPullbackBacktestRatios(symbol, start, end, options = {}
     emaLength = PULLBACK_EMA_LENGTH,
     reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
+    cmoMin = PULLBACK_CMO_MIN,
     riskPerTrade = RISK_PER_TRADE,
     initialCapital = INITIAL_CAPITAL,
     stopLossPct = STOP_LOSS_PCT,
   } = options;
 
   const { candles: raw, source } = await fetchHistorical(symbol, start, end, PULLBACK_TIMEFRAME);
-  const evaluated = generatePullbackSignals(raw, { cmoLength, emaLength, reversalPoints, cooldownBars });
+  const evaluated = generatePullbackSignals(raw, { cmoLength, emaLength, reversalPoints, cooldownBars, cmoMin });
 
   const results = {};
   for (const ratio of ratios) {
@@ -225,6 +229,7 @@ export async function runPullbackBacktestRatios(symbol, start, end, options = {}
       emaLength,
       reversalPoints,
       cooldownBars,
+      cmoMin,
       source,
       ...sim,
     };

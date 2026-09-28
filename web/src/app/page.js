@@ -93,6 +93,7 @@ export default function Home() {
   const [emaLength, setEmaLength] = useState(200);
   const [reversalPoints, setReversalPoints] = useState(30);
   const [cooldownBars, setCooldownBars] = useState(0);
+  const [cmoMin, setCmoMin] = useState(0);
   // Fixed, not user-adjustable. The stop defines 1R and position size is
   // derived from it, so both stay constant across the 1:1/1:2/1:3 comparison
   // — only the target moves. Server defaults match these values.
@@ -149,7 +150,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&displayTimeframe=${displayTimeframe}`;
+      let url = `${API_BASE}/api/pullback-signals?pair=${encodeURIComponent(pair)}&limit=${candleLimit}&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&cmoMin=${cmoMin}&displayTimeframe=${displayTimeframe}`;
       if (focusDate) url += `&around=${encodeURIComponent(focusDate)}`;
       const res = await fetch(url);
       const data = await res.json();
@@ -160,7 +161,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [pair, candleLimit, focusDate, cmoLength, emaLength, reversalPoints, cooldownBars, displayTimeframe]);
+  }, [pair, candleLimit, focusDate, cmoLength, emaLength, reversalPoints, cooldownBars, cmoMin, displayTimeframe]);
 
   const loadPositions = useCallback(async () => {
     const res = await fetch(`${API_BASE}/api/positions`);
@@ -180,8 +181,19 @@ export default function Home() {
     setBacktestHistory(data.runs || []);
   }, []);
 
+  // Debounce: sliders update `loadChart`'s deps on every tick while dragging,
+  // but firing a fetch per tick would spam the API. Show the loader right
+  // away (so drag feels responsive) and only actually call after the deps
+  // have been stable for DEBOUNCE_MS.
+  const DEBOUNCE_MS = 4000;
+  const debounceRef = useRef(null);
   useEffect(() => {
-    loadChart();
+    setLoading(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      loadChart();
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(debounceRef.current);
   }, [loadChart]);
 
   // Once the current hour's candle closes, refetch so it lands as real closed
@@ -325,7 +337,7 @@ export default function Home() {
   async function runBacktest() {
     setBacktestLoading(true);
     try {
-      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}`;
+      const shared = `&cmoLength=${cmoLength}&emaLength=${emaLength}&reversalPoints=${reversalPoints}&cooldownBars=${cooldownBars}&cmoMin=${cmoMin}&riskPerTrade=${riskPerTrade}&initialCapital=${initialCapital}&stopLossPct=${stopLossPct}`;
 
       // One request: signals are computed once server-side and re-simulated
       // per ratio, instead of firing one full backtest (and one EMA/CMO
@@ -505,6 +517,22 @@ export default function Home() {
             onChange={(e) => setCooldownBars(Number(e.target.value))}
             className="w-full accent-emerald-500"
           />
+        </label>
+
+        <label className="block text-sm">
+          CMO negative boundary: <span className="text-zinc-100 font-medium">{cmoMin}</span>
+          <input
+            type="range"
+            min="-100"
+            max="0"
+            step="1"
+            value={cmoMin}
+            onChange={(e) => setCmoMin(Number(e.target.value))}
+            className="w-full accent-emerald-500"
+          />
+          <span className="block text-[11px] text-zinc-500">
+            CMO counts as outside-band (armable) only below this. Lower (more negative) lets deeper oversold pullbacks qualify.
+          </span>
         </label>
 
         <label className="block text-sm">
@@ -841,6 +869,7 @@ export default function Home() {
                 <span>EMA <span className="text-zinc-200">{backtest.emaLength}</span></span>
                 <span>CMO <span className="text-zinc-200">{backtest.cmoLength}</span></span>
                 <span>Reversal <span className="text-zinc-200">{backtest.reversalPoints}pt</span></span>
+                <span>CMO min <span className="text-zinc-200">{backtest.cmoMin}</span></span>
                 <span>Data <span className="text-zinc-200">{backtest.source}</span></span>
               </div>
 

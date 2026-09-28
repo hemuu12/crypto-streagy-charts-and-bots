@@ -4,6 +4,11 @@ export const PULLBACK_CMO_LENGTH = 18;
 // BUY fires once CMO rises this many points above the tracked anchor low.
 export const PULLBACK_CMO_REVERSAL_POINTS = 30;
 
+// Lower edge of the allowed CMO band. CMO must be < 0 (and >= this) to count
+// as "outside the band" and arm a reversal. More negative = lets deeper
+// oversold pullbacks still qualify.
+export const PULLBACK_CMO_MIN = 0;
+
 // 0 = no cooldown; every qualifying candle can open a trade. Entries are
 // still bounded because a new trade only opens once the previous one has hit
 // its stop or target.

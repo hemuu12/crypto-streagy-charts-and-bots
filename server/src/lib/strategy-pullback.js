@@ -4,6 +4,7 @@ import {
   PULLBACK_CMO_LENGTH,
   PULLBACK_COOLDOWN_BARS,
   PULLBACK_CMO_REVERSAL_POINTS,
+  PULLBACK_CMO_MIN,
 } from "./config.js";
 
 export function dropFormingCandle(candles, timeframeMs) {
@@ -30,6 +31,7 @@ export function generatePullbackSignals(
     emaLength = PULLBACK_EMA_LENGTH,
     reversalPoints = PULLBACK_CMO_REVERSAL_POINTS,
     cooldownBars = PULLBACK_COOLDOWN_BARS,
+    cmoMin = PULLBACK_CMO_MIN,
   }
 ) {
   const opens = candles.map((c) => c.open);
@@ -56,7 +58,7 @@ export function generatePullbackSignals(
     const priceAboveEma = c.ema != null && c.open > c.ema;
     const reversalArmed = anchor != null && cmo != null;
     const reversalFromLow = reversalArmed && cmo - anchor >= reversalPoints;
-    const outsideCmoBand = cmo != null && !(cmo >= 0 && cmo <= 100);
+    const outsideCmoBand = cmo != null && !(cmo >= cmoMin && cmo <= 100);
     const checks = { priceAboveEma, reversalFromLow, outsideCmoBand };
 
     const inCooldown = lastEntryIndex != null && i - lastEntryIndex < cooldownBars;
